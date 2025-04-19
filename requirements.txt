@@ -1,0 +1,5 @@
+pandas>=2.2.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+replicate>=0.22.0
+huggingface-hub>=0.20.3 

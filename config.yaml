@@ -1,0 +1,9 @@
+# Hugging Face repository configuration
+repo_id: hblim/top_reddit_posts_daily
+repo_type: dataset 
+
+# Batch processing configuration
+batch_size: 1024
+
+# Replicate model configuration
+replicate_model: halstonblim/distilbert-base-uncased-finetuned-sst-2-english:d1a897bcd8ebb23c5aab87317eee2d6c919cdc5cfbf9154140c5c2fb47344b8c
