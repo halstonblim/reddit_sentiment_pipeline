@@ -8,19 +8,8 @@ from data_utils import load_summary, add_rolling, get_subreddit_colors
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
 st.title("Reddit Sentiment Monitor")
 
-# ── Sidebar controls ─────────────────────────────────────────────────────────
-with st.sidebar:
-    st.header("Filters")
-    days = st.slider("Rolling‑window (days)", 3, 30, 7, step=1)
-    since = st.date_input(
-        "Show data since",
-        value=date.today() - timedelta(days=60),
-    )
-
 # ── Load & transform data ────────────────────────────────────────────────────
 df = load_summary()
-df = df[df["date"] >= pd.to_datetime(since)]
-df = add_rolling(df, window=days)
 
 # Get colors for each subreddit
 subreddits = df["subreddit"].unique()
