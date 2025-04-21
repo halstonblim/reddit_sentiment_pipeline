@@ -19,7 +19,6 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 import yaml
-from dotenv import load_dotenv
 from huggingface_hub import (
     hf_hub_download,
     list_repo_files,
@@ -34,14 +33,32 @@ from aggregator import summary_from_df
 # ──────────────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent  # project root
 
+# If running locally or Streamlit is not available, use dotenv
+try:
+    import streamlit as st
+    has_streamlit = True
+except ImportError:
+    has_streamlit = False
+
+if os.getenv("ENV") == "local" or not has_streamlit:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
+
+# Helper function to get secrets
+def get_secret(key, default=None):
+    """Get a secret from environment variables or Streamlit secrets."""
+    value = os.getenv(key)
+    if value is None and has_streamlit:
+        value = st.secrets.get(key, default)
+    return value
+
 # 1️⃣  repo_id from config.yaml (version‑controlled, non‑secret)
 with open(ROOT / "config.yaml", "r") as fh:
     cfg = yaml.safe_load(fh)
 REPO_ID: str = cfg["repo_id"]
 
-# 2️⃣  HF_TOKEN from .env (git‑ignored) or CI secrets
-load_dotenv(ROOT / ".env")
-HF_TOKEN = os.getenv("HF_TOKEN")  # raise at runtime if missing
+# 2️⃣  HF_TOKEN from .env (git‑ignored) or CI secrets or Streamlit secrets
+HF_TOKEN = get_secret("HF_TOKEN")  # raise at runtime if missing
 
 SCORED_DIR = "data_scored"
 SUMMARY_FILE = ROOT / "subreddit_daily_summary.csv"  # write at repo root

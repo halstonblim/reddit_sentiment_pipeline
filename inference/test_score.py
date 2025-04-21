@@ -2,24 +2,35 @@
 Unit‑test for score.score_date()
 
 • Builds a tiny Parquet in a temp dir
-• Stubs download_raw_file → local parquet
-• Stubs hf_api.upload_file   → no‑op
-• Stubs replicate_client.run → dummy output  [1,0,1,0]
+• Stubs download_raw_file → local parquet
+• Stubs hf_api.upload_file   → no‑op
+• Stubs replicate_client.run → dummy output  [1,0,1,0]
 
 No network traffic, no Replicate token needed.
 """
 
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
 import pytest
-from dotenv import load_dotenv
 
 # ------------------------------------------------------------------
-# Load .env so score.py can import its secrets (even though we won't use them)
+# Load environment variables for testing
 # ------------------------------------------------------------------
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+project_root = Path(__file__).resolve().parent.parent
+
+# If running locally or Streamlit is not available, use dotenv
+try:
+    import streamlit as st
+    has_streamlit = True
+except ImportError:
+    has_streamlit = False
+
+if os.getenv("ENV") == "local" or not has_streamlit:
+    from dotenv import load_dotenv
+    load_dotenv(project_root / ".env")
 
 from score import score_date  # noqa: E402
 

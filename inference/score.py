@@ -3,22 +3,39 @@ import argparse
 import json
 from pathlib import Path
 import pandas as pd
-from dotenv import load_dotenv
 import yaml
 import replicate
 from huggingface_hub import HfApi, hf_hub_download
 
-# Load secrets from .env in project root
+# Load secrets from environment variables or Streamlit secrets
 project_root = Path(__file__).parent.parent
-load_dotenv(dotenv_path=project_root / '.env')
+
+# If running locally or Streamlit is not available, use dotenv
+try:
+    import streamlit as st
+    has_streamlit = True
+except ImportError:
+    has_streamlit = False
+
+if os.getenv("ENV") == "local" or not has_streamlit:
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=project_root / '.env')
+
+# Helper function to get secrets
+def get_secret(key, default=None):
+    """Get a secret from environment variables or Streamlit secrets."""
+    value = os.getenv(key)
+    if value is None and has_streamlit:
+        value = st.secrets.get(key, default)
+    return value
 
 # Load non-secret config from YAML in project root
 with open(project_root / 'config.yaml', 'r') as f:
     config = yaml.safe_load(f)
 
 # Environment variables
-HF_TOKEN = os.getenv('HF_TOKEN')
-REPLICATE_API_TOKEN = os.getenv('REPLICATE_API_TOKEN')
+HF_TOKEN = get_secret('HF_TOKEN')
+REPLICATE_API_TOKEN = get_secret('REPLICATE_API_TOKEN')
 
 # Config parameters
 REPO_ID = config['repo_id']
