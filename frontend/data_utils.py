@@ -1,72 +1,103 @@
 from __future__ import annotations
 from pathlib import Path
-import os, yaml, pandas as pd
+import os
+import yaml
+import pandas as pd
+from huggingface_hub import HfApi
+from datetime import datetime, timezone
 
+# Root directory of the project
 ROOT = Path(__file__).resolve().parent.parent
 
-# If running locally, load from .env file
-# If running in Streamlit Cloud, use st.secrets
+# Detect Streamlit runtime
 try:
     import streamlit as st
     has_streamlit = True
 except ImportError:
     has_streamlit = False
 
-# If local environment or Streamlit not available, use dotenv
+# Load environment variables when running locally
 if os.getenv("ENV") == "local" or not has_streamlit:
     from dotenv import load_dotenv
     load_dotenv(ROOT / ".env")
 
-# read repo_id from config.yaml (committed)
+# Read Hugging Face dataset repo ID from config
 with open(ROOT / "config.yaml") as f:
-    REPO_ID: str = yaml.safe_load(f)["repo_id"]
+    cfg = yaml.safe_load(f)
+REPO_ID: str = cfg["repo_id"]
 
-# Get HF_TOKEN from env vars or streamlit secrets
-def get_secret(key, default=None):
-    """Get a secret from environment variables or Streamlit secrets."""
-    value = os.getenv(key)
-    if value is None and has_streamlit:
-        value = st.secrets.get(key, default)
-    return value
+# Initialize Hugging Face API client
+api = HfApi()
 
+# URL for the summary CSV in the dataset
 CSV_URL = (
     f"https://huggingface.co/datasets/{REPO_ID}/resolve/main/subreddit_daily_summary.csv"
 )
 
+
+def get_secret(key: str, default=None) -> str | None:
+    """Fetch a secret from environment variables or Streamlit secrets."""
+    val = os.getenv(key)
+    if val is None and has_streamlit:
+        val = st.secrets.get(key, default)
+    return val
+
+
 def load_summary() -> pd.DataFrame:
-    """Load subreddit_daily_summary.csv from HF Hub into a DataFrame."""
+    """Download and return the subreddit daily summary as a DataFrame."""
     df = pd.read_csv(CSV_URL, parse_dates=["date"])
-    # guarantee expected columns
     needed = {"date", "subreddit", "mean_sentiment", "weighted_sentiment", "count"}
     if not needed.issubset(df.columns):
-        raise ValueError(f"Missing columns in summary CSV: {needed - set(df.columns)}")
+        missing = needed - set(df.columns)
+        raise ValueError(f"Missing columns in summary CSV: {missing}")
     return df
+
+
+def get_last_updated_hf(repo_id: str) -> datetime:
+    """
+    Retrieve the dataset repo's last modified datetime via HF Hub API.
+    Returns a timezone-aware datetime in UTC.
+    """
+    info = api.repo_info(repo_id=repo_id, repo_type="dataset")
+    dt: datetime = info.lastModified  # already a datetime object
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt
+
+
+def get_last_updated_hf_caption() -> str:
+    """
+    Build a markdown-formatted caption string showing the dataset source and last update.
+    Uses REPO_ID and the HF Hub API to fetch the timestamp.
+    """
+    # Generate dataset link and timestamp
+    dataset_url = f"https://huggingface.co/datasets/{REPO_ID}"
+    last_update_dt = get_last_updated_hf(REPO_ID)
+    last_update = last_update_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+    # Return the small-caption HTML/markdown string
+    return (
+        f"<small>"
+        f"Data source: <a href='{dataset_url}' target='_blank'>{REPO_ID}</a> &bull; "
+        f"Last updated: {last_update}"
+        f"</small>"
+    )
+
 
 def add_rolling(df: pd.DataFrame, window: int = 7) -> pd.DataFrame:
-    """Add 7‑day (default) rolling mean columns for each subreddit."""
-    df = df.copy()
-    # Group by subreddit and sort by date within each group
-    for subreddit, group in df.groupby("subreddit"):
-        group_sorted = group.sort_values("date")
-        # Calculate rolling average for this subreddit
-        roll_values = group_sorted["weighted_sentiment"].rolling(window).mean()
-        # Map back to original dataframe using index
-        df.loc[group_sorted.index, f"roll_{window}"] = roll_values
-    return df
+    """Add a rolling mean for weighted_sentiment over the specified window."""
+    out = df.copy()
+    for sub, grp in out.groupby("subreddit"):
+        grp_sorted = grp.sort_values("date")
+        roll = grp_sorted["weighted_sentiment"].rolling(window).mean()
+        out.loc[grp_sorted.index, f"roll_{window}"] = roll
+    return out
 
-def get_subreddit_colors(subreddits):
-    """Return a consistent color scheme for subreddits."""
-    # Standard color palette for visualization
-    color_palette = [
-        "#1f77b4",  # blue
-        "#ff7f0e",  # orange
-        "#2ca02c",  # green
-        "#d62728",  # red
-        "#9467bd",  # purple
-        "#8c564b",  # brown
-        "#e377c2",  # pink
-        "#7f7f7f",  # gray
+
+def get_subreddit_colors(subreddits: list[str]) -> dict[str, str]:
+    """Provide a consistent color map for each subreddit."""
+    palette = [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+        "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
     ]
-    
-    # Map each subreddit to a color
-    return {sub: color_palette[i % len(color_palette)] for i, sub in enumerate(sorted(subreddits))}
+    return {sub: palette[i % len(palette)] for i, sub in enumerate(sorted(subreddits))}

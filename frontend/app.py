@@ -1,15 +1,16 @@
+import os
 import streamlit as st
 import pandas as pd
 import altair as alt
 from datetime import date, timedelta
-
-from data_utils import load_summary, add_rolling, get_subreddit_colors
+from data_utils import load_summary, add_rolling, get_subreddit_colors, get_last_updated_hf_caption
 
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
 st.title("Reddit Sentiment Monitor")
 
 # ── Load & transform data ────────────────────────────────────────────────────
 df = load_summary()
+last_update_caption = get_last_updated_hf_caption()
 
 # Get colors for each subreddit
 subreddits = df["subreddit"].unique()
@@ -102,4 +103,5 @@ for i, (_, row) in enumerate(latest_by_subreddit.iterrows()):
         st.metric("Mean Sentiment", f"{row['mean_sentiment']:.2f}")
         st.metric("Posts", int(row["count"]))
 
-st.caption("Data source: Hugging Face dataset – updated nightly")
+# st.caption(f"Data Source: Hugging Face Dataset hblim/top_reddit_posts_daily Last Update: {last_update}")
+st.markdown(last_update_caption, unsafe_allow_html=True)
