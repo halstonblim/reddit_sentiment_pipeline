@@ -1,148 +1,199 @@
-# Reddit Analysis Pipeline
+# Reddit Sentiment Pipeline
 
-This project provides a pipeline for scraping, analyzing, and summarizing Reddit data by:
-1. Scraping top posts from configured subreddits
-2. Scoring the sentiment of those posts
-3. Summarizing the sentiment data by date and subreddit
+[![CI Status](https://github.com/halstonblim/reddit_sentiment_pipeline/actions/workflows/daily.yml/badge.svg)](https://github.com/halstonblim/reddit_sentiment_pipeline/actions/workflows/daily.yml)
+[![Streamlit App](https://img.shields.io/badge/demo-streamlit-ff4b4b?logo=streamlit)](https://redditsentimentpipeline.streamlit.app/)
 
-## Installation
+A fully‑automated **end‑to‑end MLOps** pipeline that tracks daily sentiment trends on Reddit, scores posts with a transformer‑based model served from Replicate, summarizes the results, and publishes an interactive Streamlit dashboard—all orchestrated by GitHub Actions.
 
-1. Clone the repository:
+---
+
+## Table of Contents
+1. [Project Structure](#project-structure)
+2. [Installation & Quick start](#installation--quick-start)
+3. [Configuration](#configuration)
+4. [Back‑end (`reddit_analysis`)](#back-end-reddit_analysis)
+5. [Unit tests](#unit-tests)
+6. [Front‑end (Streamlit)](#front-end-streamlit)
+7. [CI/CD & GitHub Actions](#cicd--github-actions)
+8. [Extending / Customising](#extending--customising)
+
+---
+
+## Project Structure
+
+````text
+reddit_sentiment_pipeline/
+├── reddit_analysis/               # Back‑end
+│   ├── __init__.py
+│   ├── scraper/
+│   │   └── scrape.py              # Collect raw posts → HF dataset (data_raw)
+│   ├── inference/
+│   │   └── score.py               # Call Replicate model → adds sentiment scores
+│   ├── summarizer/
+│   │   └── summarize.py           # Aggregate + export CSV summaries (data_scored)
+│   ├── config_utils.py            # Secrets & YAML helper
+│   ├── tests/                     # Pytest test-suite
+|
+├── streamlit_app/                 # Front‑end
+│   └── app.py
+│
+├── .github/
+│   └── workflows/
+│       ├── daily.yml              # Cron‑triggered ETL + summarize
+│
+├── config.yaml                    # Default runtime config (subreddits, models …)
+├── requirements.txt               # requirements for front end only
+├── requirements-dev.txt           # requirements for local development
+└── README.md
+````
+
+---
+
+## Installation & Quick start
+
 ```bash
-git clone https://github.com/halstonblim/reddit_sentiment_pipeline.git
-cd reddit_analysis
-```
+# 1) Clone
+$ git clone https://github.com/halstonblim/reddit_sentiment_pipeline.git
+$ cd reddit_sentiment_pipeline
 
-2. Create a `.env` file with the required credentials:
-```
-REDDIT_CLIENT_ID=your_client_id
-REDDIT_CLIENT_SECRET=your_client_secret
-REDDIT_USER_AGENT=your_user_agent
-HF_TOKEN=your_huggingface_token
-REPLICATE_API_TOKEN=your_replicate_token
-```
+# 2) Create env & install deps
+$ python -m venv .venv && source .venv/bin/activate  # or conda/mamba
+$ pip install -r requirements-dev.txt
 
-3. Install the package in development mode:
-```bash
-pip install -e .
+# 3) Create .env (or export) with the secrets below
+HF_TOKEN="hf_xxxxxxxxxxxxxx"
+REPLICATE_API_TOKEN="r8_xxxxxxxxxxxxxx"
+
+# 4) Run the full pipeline for today
+$ python -m reddit_analysis.scraper.scrape    --date $(date +%F)
+$ python -m reddit_analysis.inference.score  --date $(date +%F)
+$ python -m reddit_analysis.summarizer.summarize --date $(date +%F)
+
+# 5) Launch dashboard
+$ streamlit run streamlit_app/app.py
 ```
+---
 
 ## Configuration
 
-Ensure `config.yaml` exists with required configuration:
+All non‑secret settings live in **`config.yaml`**; sensitive tokens are supplied via environment variables or a `.env` file.
+
 ```yaml
-repo_id: "your_huggingface_repo_id"
-repo_type: "dataset"
-timezone: "UTC"
-
-# Directory configuration (all paths are relative to project root)
-raw_dir: "data_raw"        # Where raw scraped data is stored locally
-scored_dir: "data_scored"  # Where sentiment-scored data is stored locally
-logs_dir: "logs"           # Where log files are stored
-summary_file: "subreddit_daily_summary.csv"  # Path to summary file
-
-# Hugging Face repository directories (paths within the HF dataset repository)
-hf_raw_dir: "data_raw"     # Directory for raw data in HF repository
-hf_scored_dir: "data_scored" # Directory for scored data in HF repository
-
-# Data processing parameters
+# config.yaml (excerpt)
+repo_id: hblim/top_reddit_posts_daily
 push_to_hf: true
-batch_size: 16
-replicate_model: "replicate/sentiment-model"
-
-# Subreddits to scrape
 subreddits:
-  - name: "python"
-    post_limit: 25
-    comment_limit: 10
-  - name: "datascience"
-    post_limit: 25
-    comment_limit: 10
+  - name: apple
+    post_limit: 100
+    comment_limit: 5
 ```
 
-## Usage
+| Variable | Where to set | Description |
+|----------|-------------|-------------|
+| `HF_TOKEN` | GitHub → *Settings › Secrets and variables* <br>or local `.env` | Personal access token with **write** permission to the HF dataset |
+| `REPLICATE_API_TOKEN` | same | Token to invoke the Replicate model |
+| `ENV` | optional | `local`, `ci`, `prod` – toggles logging & Streamlit behaviour |
 
-Each script in the pipeline requires a date parameter in YYYY-MM-DD format.
+---
 
-### 1. Scraping Reddit Data
+## Back‑end (`reddit_analysis`)
 
-Scrapes posts from the configured subreddits for a specific date:
+### 1. `scraper.scrape`
+Collects the top *N* daily posts from each configured subreddit and appends them to a [Hugging Face **Parquet** dataset](https://huggingface.co/datasets/hblim/top_reddit_posts_daily/tree/main/data_raw) (`data_raw`).
 
 ```bash
-python -m reddit_analysis.scraper.scrape --date 2025-04-20
+python -m reddit_analysis.scraper.scrape \
+       --date 2025-04-22           # YYYY‑MM‑DD (defaults to today)
+       --limit 100                 # optional, posts/subreddit
+       --overwrite                 # re‑upload if already exists
 ```
 
-This produces a parquet file in the `raw_dir` directory and optionally uploads it to Hugging Face in the `hf_raw_dir` path.
+* **Dependencies:** [`praw`](https://praw.readthedocs.io/), `huggingface‑hub`
+* **De‑duplication:** handled server‑side via dataset row `post_id` as primary key—**no local state needed**.
 
-### 2. Scoring Sentiment
+---
 
-Scores the sentiment of posts and comments for a specific date:
+### 2. `inference.score`
+Downloads one day of raw posts, sends raw text consisting of `title + selftext` to the **Replicate** hosted model in batches for optimized parallel computation, and pushes a scored Parquet file to a separate [Hugging Face **Parquet** dataset](https://huggingface.co/datasets/hblim/top_reddit_posts_daily/tree/main/data_scored) `data_scored`.
 
 ```bash
-python -m reddit_analysis.inference.score --date 2025-04-20
+python -m reddit_analysis.inference.score \
+       --date 2025-04-22 \
+       --model your‑org/sentiment‑model:latest \
+       --batch_size 64            # Replicate parallelism
 ```
 
-This reads from the `hf_raw_dir` HF repository path, scores the sentiment using Replicate, saves to the local `scored_dir` directory, and uploads to the `hf_scored_dir` repository path.
+* **Retry logic:** automatic back‑off for `httpx.RemoteProtocolError`.
+---
 
-### 3. Summarizing Data
-
-Summarizes the scored data for a specific date:
+### 3. `summarizer.summarize`
+Aggregates daily sentiment by subreddit (mean & weighted means) and writes a compact CSV plus a Parquet summary.
 
 ```bash
-python -m reddit_analysis.summarizer.summarize --date 2025-04-20
+python -m reddit_analysis.summarizer.summarize \
+       --date 2025-04-22 \
+       --output_format csv parquet
 ```
 
-This reads from the `hf_scored_dir` repository path and updates the summary file specified in the configuration.
+* **Uses `pandas` `groupby` (no default sorting—explicitly sorts by date + subreddit).**
+* **Exports** are placed under `data_summary/` in the same HF dataset repo.
 
-## Running the Entire Pipeline
+---
 
-To run the entire pipeline for a specific date:
+## Unit tests
+
+The backend test‑suite lives in `reddit_analysis/tests/` and can be executed with **pytest**:
 
 ```bash
-python -m reddit_analysis.scraper.scrape --date 2025-04-20
-python -m reddit_analysis.inference.score --date 2025-04-20
-python -m reddit_analysis.summarizer.summarize --date 2025-04-20
+pytest -q
 ```
 
-## Project Structure
+| File | What it tests | Key fixtures / mocks |
+|------|--------------|----------------------|
+| `tests/scraper/test_scrape.py` | Reddit fetch logic, de‑duplication rules | `praw.Reddit`, `huggingface_hub.HfApi` mocked via `monkeypatch` |
+| `tests/inference/test_score.py` | Batching, error handling when HF token missing | Fake Replicate API via `httpx.MockTransport` |
+| `tests/summarizer/test_summarize.py` | Correct aggregation & sorting | `pandas` dummy frames |
 
-```
-reddit_analysis/
-├── __init__.py
-├── config_utils.py
-├── scraper/
-│   ├── __init__.py
-│   └── scrape.py
-├── inference/
-│   ├── __init__.py
-│   └── score.py
-└── summarizer/
-    ├── __init__.py
-    ├── aggregator.py
-    └── summarize.py
-```
+CI runs the tests on every push (see [daily.yml](#cicd--github-actions)).
 
-## Development
+---
 
-To set up the development environment:
+## Front‑end (Streamlit)
+
+`streamlit_app/app.py` provides an interactive dashboard that:
+1. Downloads the daily summary CSVs from HF.
+2. Displays time‑series sentiment trends, top posts tables, and subreddit post counts.
+3. Allows filtering by date range or subreddit with responsive Altair charts.
 
 ```bash
-pip install -e ".[dev]"
+# Local preview
+streamlit run streamlit_app/app.py
 ```
 
-This will install the package in development mode with additional development dependencies:
-- pytest for testing
-- black for code formatting
-- isort for import sorting
+* **Mobile‑friendly:** layout falls back to a single‑column stack on small viewports.
 
-## Testing
+---
 
-To run the tests:
+## CI/CD & GitHub Actions
 
-```bash
-pytest
-```
+### `.github/workflows/daily.yml`
+| Step | What it does |
+|------|--------------|
+| **Setup** | Checkout repo, install Python 3.12, cache pip deps |
+| **Scrape** | `python -m reddit_analysis.scraper.scrape --date $DATE` |
+| **Score** | `python -m reddit_analysis.inference.score --date $DATE` |
+| **Summarize** | `python -m reddit_analysis.summarizer.summarize --date $DATE` |
+| **Tests** | `pytest -q` |
 
-## License
+*Trigger:* `cron: "0 21 * * *"` → 4 pm America/Chicago every day.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+Secrets (`HF_TOKEN`, `REPLICATE_API_TOKEN`) are injected via **repository secrets** so the workflow can push to Hugging Face and call Replicate. The runner is completely stateless—every job starts on a fresh VM and writes data only to external storage (HF dataset).
+
+---
+
+## Extending / Customising
+
+* **Change subreddits** – edit the list in `config.yaml` or pass `--subreddits` to the scraper.
+* **Swap sentiment models** – point `replicate_model` to any text‑classification model on Replicate with single‑sentence input.
+* **Augment summaries** – create additional aggregator modules (e.g. keyword extraction) and add a new step in `daily.yml`.
+
