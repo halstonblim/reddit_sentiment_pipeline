@@ -13,8 +13,8 @@ try:
 except ImportError:
     HAS_STREAMLIT = False
 
-# Project root
-ROOT = Path(__file__).resolve().parent
+# Project root - now points to the project root directory
+ROOT = Path(__file__).resolve().parent.parent
 
 def load_environment():
     """Load environment variables from .env if running locally."""
