@@ -8,14 +8,14 @@ A fully‑automated **end‑to‑end MLOps** pipeline that tracks daily sentimen
 ---
 
 ## Table of Contents
-1. [Project Structure](#project-structure)
-2. [Installation & Quick start](#installation--quick-start)
+1. [Project Structure](#project-structure)
+2. [Installation & Quick start](#installation--quick-start)
 3. [Configuration](#configuration)
-4. [Back‑end (`reddit_analysis`)](#back-end-reddit_analysis)
-5. [Unit tests](#unit-tests)
-6. [Front‑end (Streamlit)](#front-end-streamlit)
-7. [CI/CD & GitHub Actions](#cicd--github-actions)
-8. [Extending / Customising](#extending--customising)
+4. [Back-end reddit_analysis](#back-end-reddit_analysis)
+5. [Unit tests](#unit-tests)
+6. [Front-end Streamlit](#front-end-streamlit)
+7. [CI/CD & GitHub Actions](#cicd--github-actions)
+8. [Extending / Customising](#extending--customising)
 
 ---
 
