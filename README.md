@@ -9,7 +9,7 @@ This project provides a pipeline for scraping, analyzing, and summarizing Reddit
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/reddit_analysis.git
+git clone https://github.com/halstonblim/reddit_sentiment_pipeline.git
 cd reddit_analysis
 ```
 
