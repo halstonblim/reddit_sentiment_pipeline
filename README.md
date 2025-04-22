@@ -9,17 +9,17 @@ A fully‑automated **end‑to‑end MLOps** pipeline that tracks daily sentimen
 
 ## Table of Contents
 1. [Project Structure](#project-structure)
-2. [Installation & Quick start](#installation--quick-start)
+2. [Installation & Quick start](#installation)
 3. [Configuration](#configuration)
-4. [Back-end reddit_analysis](#back-end-reddit_analysis)
+4. [Back-end reddit_analysis](#backend-reddit-analysis)
 5. [Unit tests](#unit-tests)
 6. [Front-end Streamlit](#front-end-streamlit)
-7. [CI/CD & GitHub Actions](#cicd--github-actions)
-8. [Extending / Customising](#extending--customising)
+7. [CI/CD & GitHub Actions](#cicd-github-actions)
+8. [Extending / Customising](#extending--customizing)
 
 ---
 
-## Project Structure
+## Project Structure
 
 ````text
 reddit_sentiment_pipeline/
@@ -49,7 +49,7 @@ reddit_sentiment_pipeline/
 
 ---
 
-## Installation & Quick start
+## Installation
 
 ```bash
 # 1) Clone
@@ -96,7 +96,7 @@ subreddits:
 
 ---
 
-## Back‑end (`reddit_analysis`)
+## Backend reddit analysis
 
 ### 1. `scraper.scrape`
 Collects the top *N* daily posts from each configured subreddit and appends them to a [Hugging Face **Parquet** dataset](https://huggingface.co/datasets/hblim/top_reddit_posts_daily/tree/main/data_raw) (`data_raw`).
@@ -140,7 +140,7 @@ python -m reddit_analysis.summarizer.summarize \
 
 ---
 
-## Unit tests
+## Unit tests
 
 The backend test‑suite lives in `reddit_analysis/tests/` and can be executed with **pytest**:
 
@@ -158,7 +158,7 @@ CI runs the tests on every push (see [daily.yml](#cicd--github-actions)).
 
 ---
 
-## Front‑end (Streamlit)
+## Front end (Streamlit)
 
 `streamlit_app/app.py` provides an interactive dashboard that:
 1. Downloads the daily summary CSVs from HF.
@@ -174,7 +174,7 @@ streamlit run streamlit_app/app.py
 
 ---
 
-## CI/CD & GitHub Actions
+## CI/CD Github Actions
 
 ### `.github/workflows/daily.yml`
 | Step | What it does |
@@ -191,7 +191,7 @@ Secrets (`HF_TOKEN`, `REPLICATE_API_TOKEN`) are injected via **repository secre
 
 ---
 
-## Extending / Customising
+## Extending / Customizing
 
 * **Change subreddits** – edit the list in `config.yaml` or pass `--subreddits` to the scraper.
 * **Swap sentiment models** – point `replicate_model` to any text‑classification model on Replicate with single‑sentence input.
