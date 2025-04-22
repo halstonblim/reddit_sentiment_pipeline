@@ -51,26 +51,29 @@ reddit_sentiment_pipeline/
 
 ## Installation
 
+To run the frontend streamlit app locally
+
 ```bash
-# 1) Clone
-$ git clone https://github.com/halstonblim/reddit_sentiment_pipeline.git
-$ cd reddit_sentiment_pipeline
+git clone https://github.com/halstonblim/reddit_sentiment_pipeline.git
+cd reddit_sentiment_pipeline
+pip install -r requirements.txt
+streamlit run frontend/app.py
+```
 
-# 2) Create env & install deps
-$ python -m venv .venv && source .venv/bin/activate  # or conda/mamba
-$ pip install -r requirements-dev.txt
+To run the backend reddit analysis locally and set up your own scraper, sentiment analysis, and export pipeline, steps are roughly
+- Get Reddit/Hugging Face/Replicate accounts and API tokens 
+- You must configure a .env with the secrets (HF, Replicate, Reddit tokens)
+- Configure the .yaml file to point to the proper Hugging Face repository and Replicate models, and subreddits to scrape
 
-# 3) Create .env (or export) with the secrets below
-HF_TOKEN="hf_xxxxxxxxxxxxxx"
-REPLICATE_API_TOKEN="r8_xxxxxxxxxxxxxx"
+Once those are configured you can run the following which should scrape Reddit, analyze text remotely with a Replicate model, and export results to Hugging Face
 
-# 4) Run the full pipeline for today
+```bash
+pip install -r requirements-dev.txt
+
+# Run the full pipeline for today
 $ python -m reddit_analysis.scraper.scrape    --date $(date +%F)
 $ python -m reddit_analysis.inference.score  --date $(date +%F)
 $ python -m reddit_analysis.summarizer.summarize --date $(date +%F)
-
-# 5) Launch dashboard
-$ streamlit run streamlit_app/app.py
 ```
 ---
 
@@ -177,6 +180,32 @@ streamlit run streamlit_app/app.py
 ## CI/CD Github Actions
 
 ### `.github/workflows/daily.yml`
+```
+[GitHub Actions Cron @ 06:00 UTC]
+          |
+          v
+  +-------+--------+
+  |  Scrape step   |  ← `scraper/scrape.py --date $DATE`
+  +-------+--------+
+          |
+          v
+  +-------+--------+
+  |  Score step    |  ← `inference/score.py --date $DATE`
+  +-------+--------+
+          |
+          v
+  +-------+--------+
+  |  Summarize     |  ← `summarizer/summarize.py --date $DATE`
+  +-------+--------+
+          |
+          v
+  [HF Dataset: data files]  
+          |
+   Frontend (Streamlit app)
+          |
+   Public URL (Streamlit Cloud)
+```
+
 | Step | What it does |
 |------|--------------|
 | **Setup** | Checkout repo, install Python 3.12, cache pip deps |
