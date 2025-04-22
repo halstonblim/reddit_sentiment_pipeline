@@ -47,6 +47,33 @@ reddit_sentiment_pipeline/
 └── README.md
 ````
 
+### Automated Workflow
+```
+[GitHub Actions Cron @ 21:00 UTC]
+          |
+          v
+  +-------+-------------+
+  |    Scrape Reddit    |  ← `scraper/scrape.py --date $DATE`
+  +-------+-------------+
+          |
+          v
+  +-------+-------------+
+  |  Sentiment Analysis |  ← `inference/score.py --date $DATE`
+  +-------+-------------+
+          |
+          v
+  +-------+-------------+
+  |      Summarize      |  ← `summarizer/summarize.py --date $DATE`
+  +-------+-------------+
+          |
+          v
+  [HF Dataset: data files]  
+          |
+   Frontend (Streamlit app)
+          |
+   Public URL (Streamlit Cloud)
+```
+
 ---
 
 ## Installation
@@ -180,31 +207,7 @@ streamlit run streamlit_app/app.py
 ## CI/CD Github Actions
 
 ### `.github/workflows/daily.yml`
-```
-[GitHub Actions Cron @ 06:00 UTC]
-          |
-          v
-  +-------+--------+
-  |  Scrape step   |  ← `scraper/scrape.py --date $DATE`
-  +-------+--------+
-          |
-          v
-  +-------+--------+
-  |  Score step    |  ← `inference/score.py --date $DATE`
-  +-------+--------+
-          |
-          v
-  +-------+--------+
-  |  Summarize     |  ← `summarizer/summarize.py --date $DATE`
-  +-------+--------+
-          |
-          v
-  [HF Dataset: data files]  
-          |
-   Frontend (Streamlit app)
-          |
-   Public URL (Streamlit Cloud)
-```
+
 
 | Step | What it does |
 |------|--------------|
