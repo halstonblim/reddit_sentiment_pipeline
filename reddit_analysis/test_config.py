@@ -6,7 +6,7 @@ This allows us to verify that our common configuration loading works properly.
 import argparse
 import os
 from pprint import pprint
-import config_utils
+import reddit_analysis.config_utils as config_utils
 
 def main():
     """Test the config_utils module."""
