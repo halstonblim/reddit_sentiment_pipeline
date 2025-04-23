@@ -43,8 +43,11 @@ def get_secret(key: str, default=None) -> str | None:
     return val
 
 
+import streamlit as st
+
+@st.cache_data(ttl=6000, show_spinner=False)
 def load_summary() -> pd.DataFrame:
-    """Download and return the subreddit daily summary as a DataFrame."""
+    """Download and return the subreddit daily summary as a DataFrame. Cached for 10 minutes."""
     df = pd.read_csv(CSV_URL, parse_dates=["date"])
     needed = {"date", "subreddit", "mean_sentiment", "weighted_sentiment", "count"}
     if not needed.issubset(df.columns):
