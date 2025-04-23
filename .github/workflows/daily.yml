@@ -58,7 +58,7 @@ jobs:
         run: python -m reddit_analysis.scraper.scrape --date "$DATE"
 
       - name: Score
-        run: python -m reddit_analysis.inference.score --date "$DATE"
+        run: python -m reddit_analysis.inference.score --date "$DATE" --overwrite
 
       - name: 🗞 Summarize
-        run: python -m reddit_analysis.summarizer.summarize --date "$DATE"
+        run: python -m reddit_analysis.summarizer.summarize --date "$DATE" --overwrite
