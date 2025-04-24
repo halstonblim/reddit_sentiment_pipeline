@@ -151,18 +151,22 @@ def test_cli_missing_token(monkeypatch, tmp_path):
     
     # Remove REPLICATE_API_TOKEN from environment
     monkeypatch.delenv('REPLICATE_API_TOKEN', raising=False)
+    # Ensure HF_TOKEN is present so only REPLICATE_API_TOKEN is missing
+    monkeypatch.setenv('HF_TOKEN', 'dummy_hf_token')
     
     # Mock Streamlit's HAS_STREAMLIT to True
     monkeypatch.setattr('reddit_analysis.config_utils.HAS_STREAMLIT', True)
-    
+    # Mock is_running_streamlit to True
+    monkeypatch.setattr('reddit_analysis.config_utils.is_running_streamlit', lambda: True)
     # Mock Streamlit secrets
     mock_secrets = Mock()
     mock_secrets.get.return_value = None
     monkeypatch.setattr('streamlit.secrets', mock_secrets)
-    
+    # Print for debug
+    import os
+    print('DEBUG: REPLICATE_API_TOKEN value before main:', os.environ.get('REPLICATE_API_TOKEN'))
     # Run the CLI with --date argument
     with pytest.raises(ValueError) as exc_info:
         from reddit_analysis.inference.score import main
         main('2025-04-20')
-    
-    assert "REPLICATE_API_TOKEN is required for scoring" in str(exc_info.value) 
+    assert "REPLICATE_API_TOKEN is required for scoring" in str(exc_info.value)

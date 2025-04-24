@@ -68,17 +68,15 @@ def test_get_secret_streamlit(monkeypatch):
     
     # Mock Streamlit's HAS_STREAMLIT to True
     monkeypatch.setattr('reddit_analysis.config_utils.HAS_STREAMLIT', True)
-    
+    # Mock is_running_streamlit to True
+    monkeypatch.setattr('reddit_analysis.config_utils.is_running_streamlit', lambda: True)
     # Mock Streamlit secrets
     class MockSecrets:
         def get(self, key, default=None):
             return 'streamlit_value'
-    
     monkeypatch.setattr('streamlit.secrets', MockSecrets())
-    
     # Get the secret
     value = get_secret('TEST_SECRET')
-    
     # Verify it returns the Streamlit secret value
     assert value == 'streamlit_value'
 

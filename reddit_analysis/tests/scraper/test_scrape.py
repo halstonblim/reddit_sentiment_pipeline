@@ -167,18 +167,21 @@ def test_cli_missing_env(monkeypatch, tmp_path):
     # Remove any existing Reddit API credentials from environment
     for key in ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET', 'REDDIT_USER_AGENT']:
         monkeypatch.delenv(key, raising=False)
-    
+    # Ensure HF_TOKEN is present so only Reddit client vars are missing
+    monkeypatch.setenv('HF_TOKEN', 'dummy_hf_token')
     # Mock Streamlit's HAS_STREAMLIT to True
     monkeypatch.setattr('reddit_analysis.config_utils.HAS_STREAMLIT', True)
-    
+    # Mock is_running_streamlit to True
+    monkeypatch.setattr('reddit_analysis.config_utils.is_running_streamlit', lambda: True)
     # Mock Streamlit secrets to return None
     mock_secrets = Mock()
     mock_secrets.get.return_value = None
     monkeypatch.setattr('streamlit.secrets', mock_secrets)
-    
+    # Print for debug
+    import os
+    print('DEBUG: REDDIT_CLIENT_ID value before main:', os.environ.get('REDDIT_CLIENT_ID'))
     # Run the CLI with --date argument
     with pytest.raises(ValueError) as exc_info:
         from reddit_analysis.scraper.scrape import main
         main('2025-04-20')
-    
-    assert "Missing required environment variables" in str(exc_info.value) 
+    assert "Missing required environment variables: REDDIT_CLIENT_ID" in str(exc_info.value)
