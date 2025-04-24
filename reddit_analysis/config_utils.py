@@ -16,23 +16,25 @@ except ImportError:
 # Project root - now points to the project root directory
 ROOT = Path(__file__).resolve().parent.parent
 
+def is_running_streamlit():
+    # The only reliable way to detect if running inside a Streamlit app
+    return os.getenv("STREAMLIT_SERVER_PORT") is not None
+
 def load_environment():
-    """Load environment variables from .env if running locally."""
-    if os.getenv("ENV") == "local" or not HAS_STREAMLIT:
+    """Load environment variables from .env if not running as a Streamlit app."""
+    if not is_running_streamlit():
         from dotenv import load_dotenv
         load_dotenv(dotenv_path=ROOT / '.env')
 
 def get_secret(key, default=None):
     """Get a secret from environment variables or Streamlit secrets."""
     value = os.getenv(key)
-    if value is None and HAS_STREAMLIT:
+    if value is None and HAS_STREAMLIT and is_running_streamlit():
         value = st.secrets.get(key, default)
-    
     if value is None and default is None:
         raise ValueError(f"Required secret {key} not found in environment or Streamlit secrets")
-        
     return value
-
+    
 def load_config(config_path=None):
     """Load configuration from YAML file."""
     if config_path is None:

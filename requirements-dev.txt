@@ -8,4 +8,4 @@ altair==5.5.0
 pyarrow==19.0.1
 pytest==8.3.5
 praw>=7.8.1
-
+prometheus-client==0.21.1

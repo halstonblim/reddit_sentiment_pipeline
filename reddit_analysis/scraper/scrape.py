@@ -303,7 +303,8 @@ def main(date_str: str = None) -> None:
     scraper.process_date(date_str)
 
 if __name__ == "__main__":
+    from reddit_analysis.common_metrics import run_with_metrics
     parser = argparse.ArgumentParser(description='Scrape Reddit posts and comments.')
     parser.add_argument('--date', type=str, help='YYYY-MM-DD date to process')
     args = parser.parse_args()
-    main(args.date)
+    run_with_metrics("scrape", main, args.date)

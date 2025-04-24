@@ -255,8 +255,9 @@ def main(date_arg: str = None, overwrite: bool = False) -> None:
     scorer.score_date(date_arg)
 
 if __name__ == '__main__':
+    from reddit_analysis.common_metrics import run_with_metrics
     parser = argparse.ArgumentParser(description='Score raw HF dataset files via Replicate.')
     parser.add_argument('--date', type=str, required=True, help='YYYY-MM-DD date to process')    
     parser.add_argument('--overwrite', action='store_true', help='Overwrite existing scored file')
     args = parser.parse_args()
-    main(args.date, args.overwrite)
+    run_with_metrics("score", main, args.date, args.overwrite)

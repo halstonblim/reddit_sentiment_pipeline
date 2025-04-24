@@ -153,12 +153,15 @@ class SummaryManager:
     def process_date(self, date_str: str, overwrite: bool = False) -> None:
         """Download scored data for `date_str`, aggregate, and append/upload."""
         # ---------- Pull scored shard for the given date ------------------ #
+
         scored_remote = f"{self.paths['hf_scored_dir']}/{date_str}.parquet"
         try:
             scored_local = self.hf_manager.download_file(scored_remote)
         except Exception as err:
             print(f"Error: could not download scored file {scored_remote}: {err}")
             return
+        
+        assert 1 == 0
 
         df_day = self.file_manager.read_parquet(scored_local)
 
@@ -219,6 +222,7 @@ def main(date_str: str, overwrite: bool = False) -> None:
 
 
 if __name__ == "__main__":
+    from reddit_analysis.common_metrics import run_with_metrics
     parser = argparse.ArgumentParser(
         description="Summarize scored Reddit data for a specific date."
     )
@@ -227,4 +231,4 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite", action="store_true",
                         help="Replace any existing rows for this date")
     args = parser.parse_args()
-    main(args.date, args.overwrite)
+    run_with_metrics("summarize", main, args.date, args.overwrite)
