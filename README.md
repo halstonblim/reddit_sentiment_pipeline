@@ -202,9 +202,6 @@ CI runs the tests on every push (see [daily.yml](#cicd--github-actions)).
 # Local preview
 streamlit run streamlit_app/app.py
 ```
-
-* **Mobile‑friendly:** layout falls back to a single‑column stack on small viewports.
-
 ---
 
 ## CI/CD Github Actions
