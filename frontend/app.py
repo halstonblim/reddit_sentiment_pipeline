@@ -8,10 +8,6 @@ from data_utils import load_summary, add_rolling, get_subreddit_colors, get_last
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
 st.title("Reddit Sentiment Monitor")
 
-# Add a refresh button in the sidebar
-if st.sidebar.button('🔄 Refresh Data'):
-    load_summary.clear()
-    st.experimental_rerun()
 
 # ── Load & transform data ────────────────────────────────────────────────────
 df = load_summary()
