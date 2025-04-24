@@ -161,8 +161,6 @@ class SummaryManager:
             print(f"Error: could not download scored file {scored_remote}: {err}")
             return
         
-        assert 1 == 0
-
         df_day = self.file_manager.read_parquet(scored_local)
 
         # sanity‑check
