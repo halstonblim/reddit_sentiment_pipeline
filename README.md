@@ -17,7 +17,8 @@ Sentiment analysis is currently done with the [DistilBERT sentiment analysis mod
 5. [Unit tests](#unit-tests)
 6. [Front-end Streamlit](#front-end-streamlit)
 7. [CI/CD & GitHub Actions](#cicd-github-actions)
-8. [Extending / Customising](#extending--customizing)
+8. [Monitoring with Grafana/Prometheus](#monitoring-with-grafanaprometheus)
+9. [Extending / Customising](#extending--customizing)
 
 ---
 
@@ -224,6 +225,20 @@ streamlit run streamlit_app/app.py
 Secrets (`HF_TOKEN`, `REPLICATE_API_TOKEN`) are injected via **repository secrets** so the workflow can push to Hugging Face and call Replicate. The runner is completely stateless—every job starts on a fresh VM and writes data only to external storage (HF dataset).
 
 ---
+
+## Monitoring with Grafana/Prometheus
+
+Implemented a lightweight Prometheus + Grafana stack; each pipeline stage pushes job_success and job_duration_seconds metrics. Dashboard surfaces run health & latency trends.
+
+Example of success state:
+
+![Success](reddit_analysis/monitoring/dashboard_succcess.png)
+
+Example of failure state:
+
+![Success](reddit_analysis/monitoring/dashboard_failure.png)
+
+--
 
 ## Extending / Customizing
 
