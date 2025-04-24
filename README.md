@@ -228,15 +228,15 @@ Secrets (`HF_TOKEN`, `REPLICATE_API_TOKEN`) are injected via **repository secre
 
 ## Monitoring with Grafana/Prometheus
 
-Implemented a lightweight Prometheus + Grafana stack; each pipeline stage pushes job_success and job_duration_seconds metrics. Dashboard surfaces run health & latency trends.
+Implemented a local lightweight Prometheus + Grafana stack; each pipeline stage pushes job_success and job_duration_seconds metrics. Dashboard surfaces run health & latency trends.
 
 Example of success state:
 
-![Success](reddit_analysis/monitoring/dashboard_succcess.png)
+![Success](reddit_analysis/monitoring/dashboard_success.png)
 
 Example of failure state:
 
-![Success](reddit_analysis/monitoring/dashboard_failure.png)
+![Failure](reddit_analysis/monitoring/dashboard_failure.png)
 
 --
 
