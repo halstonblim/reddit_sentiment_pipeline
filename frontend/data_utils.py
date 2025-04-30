@@ -48,8 +48,14 @@ import streamlit as st
 
 @st.cache_data(ttl=6000, show_spinner=False)
 def load_summary() -> pd.DataFrame:
-    """Download and return the subreddit daily summary as a DataFrame. Cached for 10 minutes."""
-    df = pd.read_csv(CSV_URL, parse_dates=["date"])
+    """Download and return the subreddit daily summary as a DataFrame using HF Hub API. Cached for 10 minutes."""
+    # Use HF Hub API to download the file instead of direct URL
+    local_file = api.hf_hub_download(
+        repo_id=REPO_ID,
+        filename="subreddit_daily_summary.csv",
+        repo_type="dataset"
+    )
+    df = pd.read_csv(local_file, parse_dates=["date"])
     needed = {"date", "subreddit", "mean_sentiment", "community_weighted_sentiment", "count"}
     if not needed.issubset(df.columns):
         missing = needed - set(df.columns)
