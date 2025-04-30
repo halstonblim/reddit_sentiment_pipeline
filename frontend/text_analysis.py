@@ -50,7 +50,7 @@ def keywords_for_df(df: pd.DataFrame, top_n=5):
     )
     
     # Quick stopword list to filter common terms
-    for ex in ['google','pixel','android','apple','rationale','advice','blog','topic','locked','author','moderator','error','bot','comments','archive','support','discord']:
+    for ex in ['google','pixel','android','iphone','apple','rationale','advice','blog','topic','locked','author','moderator','error','bot','comments','archive','support','discord']:
         cand = cand.replace(ex, " ")
     
     # Use KeyBERT to extract keywords with diversity
