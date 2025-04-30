@@ -35,7 +35,7 @@ class FileManager:
         if not path.exists() or path.stat().st_size == 0:
             return pd.DataFrame(
                 columns=["date", "subreddit",
-                         "mean_sentiment", "weighted_sentiment", "count"]
+                         "mean_sentiment", "community_weighted_sentiment", "count"]
             )
         return pd.read_csv(path)
 
@@ -118,7 +118,7 @@ class SummaryManager:
             # first run – file doesn't exist yet on the Hub
             return pd.DataFrame(
                 columns=["date", "subreddit",
-                         "mean_sentiment", "weighted_sentiment", "count"]
+                         "mean_sentiment", "community_weighted_sentiment", "count"]
             )
 
         return pd.read_csv(cached_path)
@@ -188,6 +188,10 @@ class SummaryManager:
         df_summary = self._load_remote_summary()
         if overwrite:
             df_summary = df_summary[df_summary["date"] != date_str]
+            
+        # Remove weighted_sentiment column if it exists
+        if "weighted_sentiment" in df_summary.columns:
+            df_summary = df_summary.drop(columns=["weighted_sentiment"])
 
         df_out = (
             pd.concat([df_summary, df_summary_day], ignore_index=True)
@@ -196,6 +200,16 @@ class SummaryManager:
         )
         df_out["date"] = pd.to_datetime(df_out["date"]).dt.date
         df_out.sort_values(["date", "subreddit"], inplace=True)
+        
+        # Ensure the weighted_sentiment column is dropped from final output
+        if "weighted_sentiment" in df_out.columns:
+            df_out = df_out.drop(columns=["weighted_sentiment"])
+
+        # Round floating point columns to 4 decimal places
+        if "mean_sentiment" in df_out.columns:
+            df_out["mean_sentiment"] = df_out["mean_sentiment"].round(4)
+        if "community_weighted_sentiment" in df_out.columns:
+            df_out["community_weighted_sentiment"] = df_out["community_weighted_sentiment"].round(4)
 
         # ---------- Save & upload ------------------------------------------- #
         self._save_and_push_summary(df_out)

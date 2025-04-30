@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import yaml
 import pandas as pd
+import numpy as np
 from huggingface_hub import HfApi
 from datetime import datetime, timezone
 
@@ -49,11 +50,28 @@ import streamlit as st
 def load_summary() -> pd.DataFrame:
     """Download and return the subreddit daily summary as a DataFrame. Cached for 10 minutes."""
     df = pd.read_csv(CSV_URL, parse_dates=["date"])
-    needed = {"date", "subreddit", "mean_sentiment", "weighted_sentiment", "count"}
+    needed = {"date", "subreddit", "mean_sentiment", "community_weighted_sentiment", "count"}
     if not needed.issubset(df.columns):
         missing = needed - set(df.columns)
         raise ValueError(f"Missing columns in summary CSV: {missing}")
     return df
+
+
+@st.cache_data(show_spinner=False, ttl=60*60)
+def load_day(date: str, subreddit: str) -> pd.DataFrame:
+    """Lazy-download the parquet shard for one YYYY-MM-DD and return df slice.
+    
+    Args:
+        date: Date string in YYYY-MM-DD format
+        subreddit: Subreddit name to filter by
+        
+    Returns:
+        DataFrame containing posts from the specified subreddit on the given day
+    """
+    fname = f"data_scored/{date}.parquet"
+    local = api.hf_hub_download(REPO_ID, fname, repo_type="dataset")
+    df_day = pd.read_parquet(local)
+    return df_day[df_day["subreddit"].str.lower() == subreddit.lower()].reset_index(drop=True)
 
 
 def get_last_updated_hf(repo_id: str) -> datetime:
@@ -88,11 +106,11 @@ def get_last_updated_hf_caption() -> str:
 
 
 def add_rolling(df: pd.DataFrame, window: int = 7) -> pd.DataFrame:
-    """Add a rolling mean for weighted_sentiment over the specified window."""
+    """Add a rolling mean for community_weighted_sentiment over the specified window."""
     out = df.copy()
     for sub, grp in out.groupby("subreddit"):
         grp_sorted = grp.sort_values("date")
-        roll = grp_sorted["weighted_sentiment"].rolling(window).mean()
+        roll = grp_sorted["community_weighted_sentiment"].rolling(window).mean()
         out.loc[grp_sorted.index, f"roll_{window}"] = roll
     return out
 
