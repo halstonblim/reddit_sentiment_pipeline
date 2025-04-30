@@ -13,7 +13,6 @@ spacy==3.8.5
 scikit-learn==1.6.1
 sentence-transformers==4.1.0
 keybert==0.9.0
-en-core-web-sm==3.8.0
 
 # Local development
 python-dotenv==1.1.0
