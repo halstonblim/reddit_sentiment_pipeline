@@ -39,6 +39,8 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 
 # Data directories
 data/

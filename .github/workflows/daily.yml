@@ -6,8 +6,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    # every day at 06:00 UTC
-    - cron: '0 21 * * *'
+    - cron: '0 23 * * *'
 
 jobs:
   build:
@@ -58,7 +57,7 @@ jobs:
         run: python -m reddit_analysis.scraper.scrape --date "$DATE"
 
       - name: Score
-        run: python -m reddit_analysis.inference.score --date "$DATE"
+        run: python -m reddit_analysis.inference.score --date "$DATE" --overwrite
 
-      - name: 🗞 Summarize
-        run: python -m reddit_analysis.summarizer.summarize --date "$DATE"
+      - name: Summarize
+        run: python -m reddit_analysis.summarizer.summarize --date "$DATE" --overwrite

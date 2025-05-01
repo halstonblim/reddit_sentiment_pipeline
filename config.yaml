@@ -15,12 +15,15 @@ logs_dir: reddit_analysis/data/logs
 hf_raw_dir: data_raw
 push_to_hf: true
 subreddits:
-  - name: apple
+  - name: artificial
     post_limit: 100
-    comment_limit: 5
-  - name: GooglePixel
+    comment_limit: 10
+  - name: LocalLLaMA
     post_limit: 100
-    comment_limit: 5
-  - name: Android
+    comment_limit: 10
+  - name: singularity
     post_limit: 100
-    comment_limit: 5
+    comment_limit: 10
+  - name: OpenAI
+    post_limit: 100
+    comment_limit: 10
