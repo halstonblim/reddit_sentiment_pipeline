@@ -5,7 +5,18 @@
 
 A fully‑automated **end‑to‑end MLOps** pipeline that tracks daily sentiment trends on Reddit, scores posts with a transformer‑based model served from Replicate, summarizes the results, and publishes an interactive Streamlit dashboard—all orchestrated by GitHub Actions.
 
-Sentiment analysis is currently done with the [DistilBERT sentiment analysis model](https://github.com/halstonblim/batch-bert-sentiment), which is wrapped with Cog for easy deployment on Replicate. The model handles batched input texts in a single API call, which improves performance by parallelizing computation on the GPU.
+***Analyzing the Public Discourse of AI News***
+
+The pipeline is currently configured in `config.yaml` to analyze AI news discourse across `r/articial`, `r/LocalLLama`, `r/singularity`, and `r/OpenAI`. The data is persisted across three steps
+1. **Scrapes** new submissions from a configurable list of subreddits (→ `data_raw/`)
+2. **Classifies** each post with a sentiment model served on Replicate (→ `data_scored/`)
+3. **Summarises** daily trends for lightweight front-end consumption (→ `daily_summary/`)
+
+More information on the data can be found on the Hugging Face Dataset repo [hblim/top_reddit_posts_daily](https://huggingface.co/datasets/hblim/top_reddit_posts_daily)
+
+***Sentiment Analysis*** 
+
+We use the [DistilBERT sentiment analysis model](https://github.com/halstonblim/batch-bert-sentiment), which is wrapped with Cog for easy deployment on Replicate. The model handles batched input texts in a single API call, which improves performance by parallelizing computation on the GPU.
 
 ---
 
