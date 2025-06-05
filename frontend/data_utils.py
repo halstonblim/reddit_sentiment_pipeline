@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from huggingface_hub import HfApi
 from datetime import datetime, timezone
+import re
 
 # Root directory of the project
 ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +64,15 @@ def load_summary() -> pd.DataFrame:
     return df
 
 
+def _sanitize(name: str) -> str:
+    """
+    Make subreddit safe for filenames (removes slashes, spaces, etc.).
+    """
+    name = name.strip().lower()
+    name = re.sub(r"[^\w\-\.]", "_", name)
+    return name
+
+
 @st.cache_data(show_spinner=False, ttl=60*60)
 def load_day(date: str, subreddit: str) -> pd.DataFrame:
     """Lazy-download the parquet shard for one YYYY-MM-DD and return df slice.
@@ -74,10 +84,13 @@ def load_day(date: str, subreddit: str) -> pd.DataFrame:
     Returns:
         DataFrame containing posts from the specified subreddit on the given day
     """
-    fname = f"data_scored/{date}.parquet"
+    # Download the subreddit-specific file using sanitized subreddit
+    safe_sub = _sanitize(subreddit)
+    fname = f"data_scored_subreddit/{date}__{safe_sub}.parquet"
     local = api.hf_hub_download(REPO_ID, fname, repo_type="dataset")
     df_day = pd.read_parquet(local)
-    return df_day[df_day["subreddit"].str.lower() == subreddit.lower()].reset_index(drop=True)
+    # File contains only the selected subreddit; reset index
+    return df_day.reset_index(drop=True)
 
 
 def get_last_updated_hf(repo_id: str) -> datetime:

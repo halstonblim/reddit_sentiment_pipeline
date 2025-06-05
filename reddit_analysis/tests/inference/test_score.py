@@ -66,6 +66,7 @@ def test_score_date(mock_config, mock_replicate_api, mock_file_manager, mock_hf_
     # Mock file operations
     mock_hf_manager.download_file.return_value = Path('test.parquet')
     mock_file_manager.read_parquet.return_value = input_df
+    mock_hf_manager.list_files.return_value = []  # No existing files
     
     # Initialize scorer with mocked dependencies
     scorer = SentimentScorer(
@@ -94,6 +95,7 @@ def test_score_date_missing_columns(mock_config, mock_replicate_api, mock_file_m
     # Mock file operations
     mock_hf_manager.download_file.return_value = Path('test.parquet')
     mock_file_manager.read_parquet.return_value = input_df
+    mock_hf_manager.list_files.return_value = []  # No existing files
     
     # Initialize scorer with mocked dependencies
     scorer = SentimentScorer(
@@ -121,6 +123,7 @@ def test_score_date_batch_processing(mock_config, mock_replicate_api, mock_file_
     # Mock file operations
     mock_hf_manager.download_file.return_value = Path('test.parquet')
     mock_file_manager.read_parquet.return_value = input_df
+    mock_hf_manager.list_files.return_value = []  # No existing files
     
     # Initialize scorer with mocked dependencies
     scorer = SentimentScorer(
@@ -139,6 +142,113 @@ def test_score_date_batch_processing(mock_config, mock_replicate_api, mock_file_
     # Verify file operations
     mock_file_manager.save_parquet.assert_called_once()
     mock_hf_manager.upload_file.assert_called_once()
+
+def test_score_date_multiple_subreddits(mock_config, mock_replicate_api, mock_file_manager, mock_hf_manager):
+    """Test that score_date correctly handles multiple subreddits."""
+    # Create test input DataFrame with multiple subreddits
+    input_df = pd.DataFrame({
+        'text': ['Test text 1', 'Test text 2', 'Test text 3', 'Test text 4'],
+        'score': [1, 2, 3, 4],
+        'post_id': ['post1', 'post2', 'post3', 'post4'],
+        'subreddit': ['test1', 'test1', 'test2', 'test2']
+    })
+    
+    # Mock file operations
+    mock_hf_manager.download_file.return_value = Path('test.parquet')
+    mock_file_manager.read_parquet.return_value = input_df
+    mock_hf_manager.list_files.return_value = []  # No existing files
+    
+    # Initialize scorer with mocked dependencies
+    scorer = SentimentScorer(
+        mock_config,
+        replicate_api=mock_replicate_api,
+        file_manager=mock_file_manager,
+        hf_manager=mock_hf_manager
+    )
+    
+    # Score the data
+    scorer.score_date('2025-04-20')
+    
+    # Verify API calls
+    mock_replicate_api.predict.assert_called()
+    
+    # Verify that save_parquet was called for each subreddit
+    assert mock_file_manager.save_parquet.call_count == 2  # 2 subreddits
+    
+    # Verify that upload_file was called for each subreddit
+    assert mock_hf_manager.upload_file.call_count == 2  # 2 subreddits
+    
+    # Check that the upload paths are correct
+    upload_calls = mock_hf_manager.upload_file.call_args_list
+    upload_paths = [call[0][1] for call in upload_calls]  # Second positional argument is path_in_repo
+    assert 'data_scored_subreddit/2025-04-20__test1.parquet' in upload_paths
+    assert 'data_scored_subreddit/2025-04-20__test2.parquet' in upload_paths
+
+def test_score_date_with_existing_subreddits(mock_config, mock_replicate_api, mock_file_manager, mock_hf_manager):
+    """Test that score_date skips existing subreddits when overwrite=False."""
+    # Create test input DataFrame with multiple subreddits
+    input_df = pd.DataFrame({
+        'text': ['Test text 1', 'Test text 2', 'Test text 3', 'Test text 4'],
+        'score': [1, 2, 3, 4],
+        'post_id': ['post1', 'post2', 'post3', 'post4'],
+        'subreddit': ['test1', 'test1', 'test2', 'test2']
+    })
+    
+    # Mock file operations
+    mock_hf_manager.download_file.return_value = Path('test.parquet')
+    mock_file_manager.read_parquet.return_value = input_df
+    # Mock existing files - test1 already exists
+    mock_hf_manager.list_files.return_value = ['data_scored_subreddit/2025-04-20__test1.parquet']
+    
+    # Initialize scorer with mocked dependencies
+    scorer = SentimentScorer(
+        mock_config,
+        replicate_api=mock_replicate_api,
+        file_manager=mock_file_manager,
+        hf_manager=mock_hf_manager
+    )
+    
+    # Score the data (overwrite=False by default)
+    scorer.score_date('2025-04-20', overwrite=False)
+    
+    # Verify API calls - should only process test2 subreddit (2 texts)
+    mock_replicate_api.predict.assert_called()
+    
+    # Verify that save_parquet was called only for test2
+    assert mock_file_manager.save_parquet.call_count == 1
+    
+    # Verify that upload_file was called only for test2
+    assert mock_hf_manager.upload_file.call_count == 1
+    
+    # Check that only test2 was uploaded
+    upload_calls = mock_hf_manager.upload_file.call_args_list
+    upload_paths = [call[0][1] for call in upload_calls]  # Second positional argument is path_in_repo
+    assert 'data_scored_subreddit/2025-04-20__test2.parquet' in upload_paths
+    assert 'data_scored_subreddit/2025-04-20__test1.parquet' not in upload_paths
+
+def test_get_existing_subreddits(mock_config, mock_replicate_api, mock_file_manager, mock_hf_manager):
+    """Test the get_existing_subreddits method."""
+    # Mock existing files
+    mock_hf_manager.list_files.return_value = [
+        'data_scored_subreddit/2025-04-20__test1.parquet',
+        'data_scored_subreddit/2025-04-20__test2.parquet',
+        'data_scored_subreddit/2025-04-21__test1.parquet',  # Different date
+        'other_folder/2025-04-20__test3.parquet'  # Different folder
+    ]
+    
+    # Initialize scorer with mocked dependencies
+    scorer = SentimentScorer(
+        mock_config,
+        replicate_api=mock_replicate_api,
+        file_manager=mock_file_manager,
+        hf_manager=mock_hf_manager
+    )
+    
+    # Get existing subreddits for 2025-04-20
+    existing = scorer.get_existing_subreddits('2025-04-20')
+    
+    # Should only include test1 and test2 for the correct date
+    assert existing == {'test1', 'test2'}
 
 def test_cli_missing_token(monkeypatch, tmp_path):
     """Test CLI with missing REPLICATE_API_TOKEN."""

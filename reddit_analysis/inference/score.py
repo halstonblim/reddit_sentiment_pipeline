@@ -25,6 +25,7 @@ from huggingface_hub import (
 import replicate
 import json
 import httpx
+import re
 
 from reddit_analysis.config_utils import setup_config
 
@@ -175,9 +176,35 @@ class SentimentScorer:
         result = self.replicate_api.predict(texts)
         return result['predicted_labels'], result['confidences']
     
-    def score_date(self, date_str: str) -> None:
-        """Process a single date: download, score, save, and upload."""
+    def get_existing_subreddits(self, date_str: str) -> set:
+        """Get set of subreddits that already have scored files for the given date."""
+        scored_files = self.hf_manager.list_files("data_scored_subreddit/")
+        existing_subreddits = set()
+        for fn in scored_files:
+            if fn.startswith(f"data_scored_subreddit/{date_str}__") and fn.endswith('.parquet'):
+                # Extract subreddit from filename: data_scored_subreddit/{date}__{subreddit}.parquet
+                subreddit = Path(fn).stem.split('__', 1)[1]
+                existing_subreddits.add(subreddit)
+        return existing_subreddits
+    
+    def _sanitize(self, name: str) -> str:
+        """
+        Make subreddit safe for filenames (removes slashes, spaces, etc.).
+        """
+        name = name.strip().lower()
+        name = re.sub(r"[^\w\-\.]", "_", name)
+        return name
+    
+    def score_date(self, date_str: str, overwrite: bool = False) -> None:
+        """Process a single date: download, score, save, and upload separate files per subreddit."""
         self.logger.info(f"Scoring date: {date_str}")
+        
+        # Get existing subreddits if not overwriting
+        existing_subreddits = set()
+        if not overwrite:
+            existing_subreddits = self.get_existing_subreddits(date_str)
+            if existing_subreddits:
+                self.logger.info(f"Found {len(existing_subreddits)} existing subreddit files for {date_str}")
         
         # Download raw file
         raw_path = f"{self.paths['hf_raw_dir']}/{date_str}.parquet"
@@ -189,6 +216,16 @@ class SentimentScorer:
         missing_columns = required_columns - set(df.columns)
         if missing_columns:
             raise ValueError(f"Missing required columns: {', '.join(missing_columns)}")
+        
+        # Filter out existing subreddits if not overwriting
+        subreddits_to_process = df['subreddit'].unique()
+        if not overwrite and existing_subreddits:
+            subreddits_to_process = [s for s in subreddits_to_process if s not in existing_subreddits]
+            if not subreddits_to_process:
+                self.logger.info(f"All subreddits already processed for {date_str}")
+                return
+            df = df[df['subreddit'].isin(subreddits_to_process)].copy()
+            self.logger.info(f"Processing {len(subreddits_to_process)} new subreddits for {date_str}")
         
         # Process in batches
         batch_size = self.config.get('batch_size', 16)
@@ -206,13 +243,22 @@ class SentimentScorer:
         df['sentiment'] = sentiments
         df['confidence'] = confidences
         
-        # Save scored file
-        scored_path = self.file_manager.save_parquet(df, date_str)
+        # Group by subreddit and save separate files
+        subreddits = df['subreddit'].unique()
+        self.logger.info(f"Found {len(subreddits)} subreddits to process for {date_str}")
         
-        # Upload to HuggingFace
-        path_in_repo = f"{self.paths['hf_scored_dir']}/{date_str}.parquet"
-        self.hf_manager.upload_file(str(scored_path), path_in_repo)
-        self.logger.info(f"Uploaded scored file for {date_str} to {self.config['repo_id']}/{path_in_repo}")
+        for subreddit in subreddits:
+            subreddit_df = df[df['subreddit'] == subreddit].copy()
+            
+            # Save scored file per subreddit using sanitized subreddit
+            safe_sub = self._sanitize(subreddit)
+            filename = f"{date_str}__{safe_sub}"
+            scored_path = self.file_manager.save_parquet(subreddit_df, filename)
+            
+            # Upload to HuggingFace with new path structure
+            path_in_repo = f"data_scored_subreddit/{date_str}__{safe_sub}.parquet"
+            self.hf_manager.upload_file(str(scored_path), path_in_repo)
+            self.logger.info(f"Uploaded scored file for {date_str}/{subreddit} ({len(subreddit_df)} rows) to {self.config['repo_id']}/{path_in_repo}")
 
 def main(date_arg: str = None, overwrite: bool = False) -> None:
     if date_arg is None:
@@ -241,18 +287,36 @@ def main(date_arg: str = None, overwrite: bool = False) -> None:
         logger.warning(f"No raw file found for date {date_arg}")
         return
     
-    # Check if date already exists in scored files
-    scored_dates = set()
-    for fn in scorer.hf_manager.list_files(scorer.paths['hf_scored_dir']):
-        if fn.endswith('.parquet'):
-            scored_dates.add(Path(fn).stem)
+    # Check if date already exists in scored files (check subreddit files)
+    if not overwrite:
+        # Get existing scored files for this date
+        scored_files = scorer.hf_manager.list_files("data_scored_subreddit/")
+        existing_subreddits = set()
+        for fn in scored_files:
+            if fn.startswith(f"data_scored_subreddit/{date_arg}__") and fn.endswith('.parquet'):
+                # Extract subreddit from filename: data_scored_subreddit/{date}__{subreddit}.parquet
+                subreddit = Path(fn).stem.split('__', 1)[1]
+                existing_subreddits.add(subreddit)
+        
+        # Check what subreddits are in the raw data
+        raw_path = f"{scorer.paths['hf_raw_dir']}/{date_arg}.parquet"
+        try:
+            local_path = scorer.hf_manager.download_file(raw_path)
+            df = scorer.file_manager.read_parquet(str(local_path))
+            raw_subreddits = set(df['subreddit'].unique())
             
-    if date_arg in scored_dates and not overwrite:
-        logger.info(f"Scored file already exists for date {date_arg}")
-        return
+            # If all subreddits already exist, skip processing
+            if raw_subreddits.issubset(existing_subreddits):
+                logger.info(f"All subreddits for date {date_arg} already scored ({len(existing_subreddits)} files)")
+                return
+            else:
+                missing_subreddits = raw_subreddits - existing_subreddits
+                logger.info(f"Some subreddits missing for {date_arg}: {missing_subreddits}")
+        except Exception as e:
+            logger.warning(f"Could not check existing subreddits for {date_arg}: {e}")
     
     # Score the specified date
-    scorer.score_date(date_arg)
+    scorer.score_date(date_arg, overwrite)
 
 if __name__ == '__main__':
     from reddit_analysis.common_metrics import run_with_metrics
