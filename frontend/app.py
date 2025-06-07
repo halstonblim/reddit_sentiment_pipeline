@@ -41,34 +41,46 @@ date_range = st.date_input(
 start_date, end_date = date_range
 filtered_df = df[(df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)]
 
-# Create selections for legend toggling and tooltip highlighting
-legend_selection = alt.selection_multi(fields=['subreddit'], bind='legend')
+# Add a multiselect widget for choosing which subreddits to display
+selected_subs = st.multiselect(
+    "Select subreddits to display",
+    options=list(subreddits),
+    default=list(subreddits)
+)
+plot_df = filtered_df[filtered_df["subreddit"].isin(selected_subs)]
+
+# Create a selection for tooltip highlighting
 nearest = alt.selection_point(nearest=True, on="mouseover", fields=["date"], empty=False)
 
-# Updated line chart with selectable legend and legend at top
-line_chart = alt.Chart(filtered_df).mark_line().encode(
+# Updated line chart with vertical legend at top
+line_chart = alt.Chart(plot_df).mark_line().encode(
     x=alt.X("date:T", title="Date", axis=alt.Axis(format=time_format)),
     y=alt.Y("community_weighted_sentiment:Q", title="Community Weighted Sentiment"),
     color=alt.Color(
         "subreddit:N",
         scale=alt.Scale(domain=list(subreddits), range=list(subreddit_colors.values())),
-        legend=alt.Legend(title="Subreddit", orient="top")
+        legend=alt.Legend(
+            title="Subreddit",
+            orient="top",
+            direction="vertical",
+            columns=1
+        )
     ),
-    opacity=alt.condition(legend_selection, alt.value(1), alt.value(0.2)),
+    opacity=alt.value(1),
     tooltip=["date", "subreddit", "community_weighted_sentiment"]
-).properties(height=300).add_selection(legend_selection)
+).properties(height=300).add_selection(nearest)
 
 # Add points for interactive tooltip
-points = alt.Chart(filtered_df).mark_point().encode(
+points = alt.Chart(plot_df).mark_point().encode(
     x="date:T",
     y="community_weighted_sentiment:Q",
     opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-).add_selection(nearest).transform_filter(legend_selection)
+).add_selection(nearest).transform_filter(nearest)
 
 # Create tooltip rule
-tooltip_rule = alt.Chart(filtered_df).mark_rule(color="gray").encode(
+tooltip_rule = alt.Chart(plot_df).mark_rule(color="gray").encode(
     x="date:T"
-).transform_filter(nearest).transform_filter(legend_selection)
+).transform_filter(nearest)
 
 # Combine charts
 combined_chart = (line_chart + points + tooltip_rule).interactive()
