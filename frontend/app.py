@@ -6,8 +6,8 @@ import altair as alt
 from datetime import date, timedelta, datetime
 
 # Import from local modules
-from data_utils import load_summary, load_day, add_rolling, get_subreddit_colors, get_last_updated_hf_caption
-from text_analysis import keywords_for_df, keyword_stats
+from data_utils import load_summary, load_day, get_subreddit_colors, get_last_updated_hf_caption
+from text_analysis import keywords_for_df
 
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
 st.title("Reddit Sentiment Monitor")
@@ -94,123 +94,151 @@ for i, (_, row) in enumerate(latest_by_subreddit.iterrows()):
         st.metric("Community Weighted", f"{row['community_weighted_sentiment']:.2f}")
         st.metric("Posts", int(row["count"]))
 
-# ── Keyword Analysis Form at the bottom of the page ────────────────────────
-st.header("Extract Keywords from Reddit Posts")
-
-# Create a form for user input
-with st.form("keyword_form"):
+# ── Analyze sentiment driving posts ─────────────────────────────────────
+st.header("Analyze sentiment driving posts")
+with st.form("analysis_form"):
     col1, col2 = st.columns(2)
-    
     with col1:
-        # Subreddit selection dropdown
-        selected_subreddit = st.selectbox(
-            "Select Subreddit", 
-            options=subreddits
-        )
-    
+        selected_subreddit = st.selectbox("Select Subreddit", options=subreddits)
     with col2:
-        # Date selection with calendar widget
         selected_date = st.date_input(
             "Select Date",
             value=max_date,
             min_value=min_date,
             max_value=max_date
         )
-    
-    # Number of keywords to extract
-    num_keywords = st.slider(
-        "Number of Keywords to Extract", 
-        min_value=3, 
-        max_value=15, 
-        value=8
-    )
-    
-    # Similarity threshold
-    sim_threshold = st.slider(
-        "Similarity Threshold", 
-        min_value=0.1, 
-        max_value=0.5, 
-        value=0.3,
-        step=0.05,
-        help="Minimum cosine similarity threshold for matching posts to keywords"
-    )
-    
-    # Submit button
-    submit_button = st.form_submit_button("Analyze Keywords")
+    submit_button = st.form_submit_button("Analyze Posts")
 
-# Process the form submission
 if submit_button:
-    # Convert date to string format
     date_str = selected_date.strftime("%Y-%m-%d")
-    
-    # Display loading spinner while fetching data
     with st.spinner(f"Loading data for r/{selected_subreddit} on {date_str}..."):
-        # Load the data for the selected day and subreddit
         posts_df = load_day(date_str, selected_subreddit)
-        
-        if posts_df.empty:
-            st.error(f"No posts found for r/{selected_subreddit} on {date_str}")
-        else:
-            # Display basic stats
-            st.subheader(f"r/{selected_subreddit} on {date_str}")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Posts", len(posts_df))
-            col2.metric("Avg Sentiment", f"{posts_df['sentiment'].mean():.2f}")
-            col3.metric("Total Score", f"{posts_df['score'].sum():,}")
-            
-            # Extract keywords
-            with st.spinner("Extracting keywords..."):
-                keywords = keywords_for_df(posts_df, top_n=num_keywords)
-                
-                if not keywords:
-                    st.warning("Could not extract meaningful keywords from this content.")
-                else:
-                    # Calculate keyword stats
-                    kw_stats, kw_subsets = keyword_stats(
-                        posts_df, 
-                        keywords, 
-                        sim_thresh=sim_threshold
+
+    if posts_df.empty:
+        st.error(f"No posts found for r/{selected_subreddit} on {date_str}")
+    else:
+        # Separate posts and comments
+        posts = posts_df[posts_df["type"] == "post"]
+        comments = posts_df[posts_df["type"] == "comment"]
+
+        # Overall summary metrics using engagement-adjusted sentiment (EAS)
+        n_posts = len(posts)
+        df_day = posts_df.copy()
+        df_day["score_num"] = pd.to_numeric(df_day["score"], errors="coerce").fillna(0)
+        weights_base_day = 1 + np.log1p(df_day["score_num"].clip(lower=0))
+        gamma_post = 0.3
+        weights_day = weights_base_day * np.where(df_day["type"] == "post", gamma_post, 1.0)
+        total_weight_day = weights_day.sum()
+        overall_eas = (weights_day * df_day["sentiment"]).sum() / weights_day.sum() if weights_day.sum() > 0 else 0
+        # Normalize daily weighted sentiment to range [-1,1]
+        overall_eas = 2 * overall_eas - 1
+        overall_score = df_day["score"].sum()
+
+        st.subheader(f"r/{selected_subreddit} on {date_str}")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Posts", n_posts)
+        c2.metric("Daily Weighted Sentiment, All Posts", f"{overall_eas:.2f}")
+        c3.metric("Total Score, All Posts", f"{overall_score:,}")
+
+        # Build per-post analysis
+        analysis_rows = []
+        for _, post in posts.iterrows():
+            pid = post["post_id"]
+            text = post["text"]
+
+            # Extract keywords for the post
+            kw = keywords_for_df(pd.DataFrame({"text": [text]}), top_n=2)
+            keywords_list = [k for k, _ in kw][:2]
+
+            # Gather comments for this post
+            post_comments = comments[comments["parent_id"] == f"t3_{pid}"]
+
+            # Combine post and comments for calculations
+            segment = pd.concat([pd.DataFrame([post]), post_comments], ignore_index=True)
+            # Compute engagement-adjusted sentiment for this post thread
+            segment_score_num = pd.to_numeric(segment["score"], errors="coerce").fillna(0)
+            weights_base = 1 + np.log1p(segment_score_num.clip(lower=0))
+            gamma_post = 0.3
+            weights_seg = weights_base * np.where(segment["type"] == "post", gamma_post, 1.0)
+            ws = (weights_seg * segment["sentiment"]).sum() / weights_seg.sum() if weights_seg.sum() > 0 else 0
+            # Normalize weighted sentiment of thread to range [-1,1]
+            ws = 2 * ws - 1
+            ts = segment["score"].sum()
+            nc = len(post_comments)
+
+            thread_weight_sum = weights_seg.sum()
+            contrib_weight = thread_weight_sum / total_weight_day if total_weight_day > 0 else 0
+            total_contribution = contrib_weight * ws
+
+            analysis_rows.append({
+                "post_id": pid,
+                "Post Keywords": ", ".join(keywords_list),
+                "Weighted Sentiment of Thread": ws,
+                "Contribution Weight": contrib_weight,
+                "Total Sentiment Contribution": total_contribution,
+                "# Comments": nc,
+                "Total Score": ts
+            })
+
+        analysis_df = pd.DataFrame(analysis_rows)
+        # Determine top 10 posts by contribution weight
+        top10 = analysis_df.sort_values("Contribution Weight", ascending=False).head(10).copy()
+        # Reset index to 0-9 for display
+        top10.reset_index(drop=True, inplace=True)
+
+        # Format numeric columns
+        for df_part in (top10,):
+            df_part["Weighted Sentiment of Thread"] = df_part["Weighted Sentiment of Thread"].map("{:.2f}".format)
+            df_part["Total Score"] = df_part["Total Score"].map("{:,}".format)
+            df_part["Contribution Weight"] = df_part["Contribution Weight"].map("{:.2%}".format)
+            df_part["Total Sentiment Contribution"] = df_part["Total Sentiment Contribution"].map("{:.4f}".format)
+
+        st.subheader("Top 10 Posts by Contribution Weight")
+        st.dataframe(
+            top10[["Post Keywords", "Weighted Sentiment of Thread", "Contribution Weight", "Total Sentiment Contribution", "# Comments", "Total Score"]],
+            use_container_width=True
+        )
+
+        st.subheader("Post Details")
+        for idx, row in top10.reset_index(drop=True).iterrows():
+            pid = row["post_id"]
+            post_obj = posts[posts["post_id"] == pid].iloc[0]
+            post_text = post_obj["text"]
+
+            with st.expander(f"{idx} - {post_text.split('\\n')[0][:50]}..."):
+                # Post Metrics
+                post_sent = post_obj["sentiment"]
+                # Normalize post sentiment to [-1,1]
+                post_sent_norm = 2 * post_sent - 1
+                post_score = post_obj["score"]
+                ps = pd.to_numeric(post_score, errors="coerce")
+                post_score_num = ps if (not np.isnan(ps) and ps >= 0) else 0
+                # Compute post weight
+                post_weight = (1 + np.log1p(post_score_num)) * gamma_post
+                st.markdown("**Post:**")
+                st.markdown(f"{post_text[:300]}{'...' if len(post_text) > 300 else ''}"
+                            f"(Sentiment: {post_sent_norm:.2f}, Weight: {post_weight:.2f}, Score: {post_score:,})"
+                            )
+                st.markdown("---")
+                # Display top 5 comments with metrics
+                top_comments = (
+                    comments[comments["parent_id"] == f"t3_{pid}"]
+                    .sort_values("score", ascending=False)
+                    .head(5)
+                )
+                st.markdown("**Top Comments:**")
+                for c_idx, comment in top_comments.iterrows():
+                    c_text = comment["text"]
+                    # Normalize comment sentiment and compute weight
+                    c_sent_norm = 2 * comment["sentiment"] - 1
+                    c_score = comment["score"]
+                    cs = pd.to_numeric(c_score, errors="coerce")
+                    c_score_num = cs if (not np.isnan(cs) and cs >= 0) else 0
+                    c_weight = 1 + np.log1p(c_score_num)
+                    st.markdown(
+                        f"{c_idx}. {c_text[:200]}{'...' if len(c_text) > 200 else ''} "
+                        f"(Sentiment: {c_sent_norm:.2f}, Weight: {c_weight:.2f}, Score: {c_score:,})"
                     )
-                    
-                    if kw_stats.empty:
-                        st.warning("No keywords met the similarity threshold.")
-                    else:
-                        # Display keyword stats as a table
-                        st.subheader("Keyword Statistics")
-                        
-                        # Format the dataframe for display
-                        display_df = kw_stats.copy()
-                        display_df["mean_sentiment"] = display_df["mean_sentiment"].map("{:.2f}".format)
-                        display_df["score_weighted_sentiment"] = display_df["score_weighted_sentiment"].map("{:.2f}".format)
-                        
-                        # Rename columns for better display
-                        display_df = display_df.rename(columns={
-                            "keyword": "Keyword",
-                            "mean_sentiment": "Avg Sentiment",
-                            "score_weighted_sentiment": "Weighted Sentiment",
-                            "n_posts": "# Posts",
-                            "total_score": "Total Score"
-                        })
-                        
-                        # Display the table
-                        st.dataframe(display_df, use_container_width=True)
-                        
-                        # Display expandable sections for each keyword
-                        st.subheader("Keyword Details")
-                        for kw in kw_stats["keyword"]:
-                            subset = kw_subsets[kw]
-                            with st.expander(f"{kw} ({len(subset)} posts)"):
-                                # Show top posts for this keyword
-                                top_posts = subset.sort_values("score", ascending=False).head(5)
-                                for _, post in top_posts.iterrows():
-                                    # Extract first line as pseudo-title (or first 50 chars)
-                                    text = post['text']
-                                    first_line = text.split('\n')[0][:50] if '\n' in text else text[:50]
-                                    
-                                    # Display post details
-                                    st.markdown(f"**{first_line}...** (Score: {post['score']:,}, Sentiment: {post['sentiment']:.2f})")
-                                    st.markdown(f"*{text[:300]}{'...' if len(text) > 300 else ''}*")
-                                    st.markdown("---")
 
 # Display the data source attribution
 st.markdown(last_update_caption, unsafe_allow_html=True)

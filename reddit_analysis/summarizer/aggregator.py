@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 
-def summary_from_df(df: pd.DataFrame) -> pd.DataFrame:
+def summary_from_df(df: pd.DataFrame, gamma_post: float = 0.3) -> pd.DataFrame:
     """
     Return a DataFrame with daily & subreddit aggregates.
 
@@ -42,22 +42,25 @@ def summary_from_df(df: pd.DataFrame) -> pd.DataFrame:
     # Remove the raw mean column
     result = result.drop(columns="raw_mean_sentiment")
     
-    # Calculate community weighted sentiment for each group
+    # Calculate engagement-adjusted sentiment (EAS) for each group
+    # 1. Ensure 'score' is numeric
+    df["score_num"] = pd.to_numeric(df["score"], errors="coerce").fillna(0)
+    # 2. Compute base weights (1 + log1p(score))
+    weights_base = 1 + np.log1p(df["score_num"].clip(lower=0))
+    # 3. Apply post weight multiplier
+    weights = weights_base * np.where(df.get("type", None) == "post", gamma_post, 1.0)
+    df["weight"] = weights
+    # 4. Compute EAS per group: weighted average of sentiment
     community_weighted_sentiments = []
-    
     for (date, subreddit), group in grouped:
-        # Community weighted sentiment calculation
-        # Using the formula: community_weighted_sentiment = log1p(max(0, score)) × sentiment_signed
-        # where sentiment_signed = (sentiment * 2 − 1)
-        # Ensure scores are non-negative for log1p
-        sentiment_signed = (group["sentiment"] * 2 - 1)
-        # Floor scores at 0 to prevent log1p from receiving negative values
-        non_negative_scores = np.maximum(group["score"], 0)
-        log_scores = np.log1p(non_negative_scores)
-        community_weighted = (log_scores * sentiment_signed).mean()
-        community_weighted_sentiments.append(community_weighted)
-    
+        w = group["weight"]
+        s = group["sentiment"]
+        eas = (w * s).sum() / w.sum() if w.sum() > 0 else 0
+        community_weighted_sentiments.append(eas)
     result["community_weighted_sentiment"] = community_weighted_sentiments
+    
+    # Normalize community_weighted_sentiment to range [-1,1]
+    result["community_weighted_sentiment"] = 2 * result["community_weighted_sentiment"] - 1
     
     # Ensure consistent column order
     result = result[["date", "subreddit", "mean_sentiment", "community_weighted_sentiment", "count"]]

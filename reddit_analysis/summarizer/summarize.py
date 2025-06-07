@@ -50,7 +50,7 @@ class FileManager:
 
 
 class HuggingFaceManager:
-    """Thin wrapper around Hugging Face Hub file ops (mock‑friendly)."""
+    """Thin wrapper around Hugging Face Hub file ops (mock‑friendly)."""
     def __init__(self, token: str, repo_id: str, repo_type: str = "dataset"):
         self.token = token
         self.repo_id = repo_id
@@ -75,6 +75,14 @@ class HuggingFaceManager:
             repo_type=self.repo_type,
             token=self.token
         )
+
+    def list_files(self, prefix: str) -> List[str]:
+        """List files in the HF repo filtered by prefix."""
+        files = self.api.list_repo_files(
+            repo_id=self.repo_id,
+            repo_type=self.repo_type
+        )
+        return [f for f in files if f.startswith(prefix)]
 
 
 # --------------------------------------------------------------------------- #
@@ -152,21 +160,41 @@ class SummaryManager:
     # --------------------------------------------------------------------- #
     def process_date(self, date_str: str, overwrite: bool = False) -> None:
         """Download scored data for `date_str`, aggregate, and append/upload."""
-        # ---------- Pull scored shard for the given date ------------------ #
-
-        scored_remote = f"{self.paths['hf_scored_dir']}/{date_str}.parquet"
+        # ---------- Pull scored shards for the given date ------------------ #
+        prefix = f"{self.paths['hf_scored_dir']}/{date_str}__"
+        # List all remote shards
         try:
-            scored_local = self.hf_manager.download_file(scored_remote)
+            all_files = self.hf_manager.list_files(self.paths['hf_scored_dir'])
         except Exception as err:
-            print(f"Error: could not download scored file {scored_remote}: {err}")
+            print(f"Error: could not list scored shards in {self.paths['hf_scored_dir']}: {err}")
             return
-        
-        df_day = self.file_manager.read_parquet(scored_local)
+
+        # Filter to shards matching this date
+        try:
+            shards = [fn for fn in all_files if fn.startswith(prefix) and fn.endswith('.parquet')]
+        except TypeError:
+            # fall back in case list_files returned a non-iterable (e.g., a mock)
+            shards = [all_files]
+
+        if not shards:
+            print(f"No scored shards found for {date_str} under {self.paths['hf_scored_dir']}")
+            return
+
+        # Download and concatenate all shards
+        dfs: List[pd.DataFrame] = []
+        for shard in shards:
+            try:
+                local_path = self.hf_manager.download_file(shard)
+            except Exception as err:
+                print(f"Error: could not download scored shard {shard}: {err}")
+                return
+            dfs.append(self.file_manager.read_parquet(local_path))
+        df_day = pd.concat(dfs, ignore_index=True)
 
         # sanity‑check
         required_cols = {"retrieved_at", "subreddit", "sentiment", "score"}
         if not required_cols.issubset(df_day.columns):
-            raise ValueError(f"{scored_remote} missing columns {required_cols}")
+            raise ValueError(f"{shards[0]} missing columns {required_cols}")
 
         # ---------- Aggregate ------------------------------------------------ #
         df_summary_day = summary_from_df(df_day)
