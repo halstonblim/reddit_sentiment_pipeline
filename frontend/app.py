@@ -31,32 +31,44 @@ max_date = df["date"].max().date()
 # ── Community weighted sentiment line chart for all subreddits ───────────────
 st.subheader("Community Weighted Sentiment by Subreddit")
 
-# Create a selection for tooltip highlighting
-nearest = alt.selection_point(
-    nearest=True, on="mouseover", fields=["date"], empty=False
+# Add date range selector for the time series
+date_range = st.date_input(
+    "Select date range for time series",
+    (min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
 )
+start_date, end_date = date_range
+filtered_df = df[(df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)]
 
-# Create line chart for community weighted sentiment by subreddit
-line_chart = alt.Chart(df).mark_line().encode(
+# Create selections for legend toggling and tooltip highlighting
+legend_selection = alt.selection_multi(fields=['subreddit'], bind='legend')
+nearest = alt.selection_point(nearest=True, on="mouseover", fields=["date"], empty=False)
+
+# Updated line chart with selectable legend and legend at top
+line_chart = alt.Chart(filtered_df).mark_line().encode(
     x=alt.X("date:T", title="Date", axis=alt.Axis(format=time_format)),
     y=alt.Y("community_weighted_sentiment:Q", title="Community Weighted Sentiment"),
     color=alt.Color(
-        "subreddit:N", 
+        "subreddit:N",
         scale=alt.Scale(domain=list(subreddits), range=list(subreddit_colors.values())),
-        legend=alt.Legend(title="Subreddit")
+        legend=alt.Legend(title="Subreddit", orient="top")
     ),
+    opacity=alt.condition(legend_selection, alt.value(1), alt.value(0.2)),
     tooltip=["date", "subreddit", "community_weighted_sentiment"]
-).properties(height=300)
+).properties(height=300).add_selection(legend_selection)
 
-# Add points for interactive selection
-points = line_chart.mark_point().encode(
+# Add points for interactive tooltip
+points = alt.Chart(filtered_df).mark_point().encode(
+    x="date:T",
+    y="community_weighted_sentiment:Q",
     opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-).add_selection(nearest)
+).add_selection(nearest).transform_filter(legend_selection)
 
 # Create tooltip rule
-tooltip_rule = alt.Chart(df).mark_rule(color="gray").encode(
+tooltip_rule = alt.Chart(filtered_df).mark_rule(color="gray").encode(
     x="date:T"
-).transform_filter(nearest)
+).transform_filter(nearest).transform_filter(legend_selection)
 
 # Combine charts
 combined_chart = (line_chart + points + tooltip_rule).interactive()
@@ -140,105 +152,106 @@ if submit_button:
         c2.metric("Daily Weighted Sentiment, All Posts", f"{overall_eas:.2f}")
         c3.metric("Total Score, All Posts", f"{overall_score:,}")
 
-        # Build per-post analysis
-        analysis_rows = []
-        for _, post in posts.iterrows():
-            pid = post["post_id"]
-            text = post["text"]
+        # Wrap analysis and rendering of top posts in a spinner
+        with st.spinner("Analyzing sentiment and rendering top posts..."):
+            # Build per-post analysis
+            analysis_rows = []
+            for _, post in posts.iterrows():
+                pid = post["post_id"]
+                text = post["text"]
 
-            # Extract keywords for the post
-            kw = keywords_for_df(pd.DataFrame({"text": [text]}), top_n=2)
-            keywords_list = [k for k, _ in kw][:2]
+                # Extract keywords for the post
+                kw = keywords_for_df(pd.DataFrame({"text": [text]}), top_n=2)
+                keywords_list = [k for k, _ in kw][:2]
 
-            # Gather comments for this post
-            post_comments = comments[comments["parent_id"] == f"t3_{pid}"]
+                # Gather comments for this post
+                post_comments = comments[comments["parent_id"] == f"t3_{pid}"]
 
-            # Combine post and comments for calculations
-            segment = pd.concat([pd.DataFrame([post]), post_comments], ignore_index=True)
-            # Compute engagement-adjusted sentiment for this post thread
-            segment_score_num = pd.to_numeric(segment["score"], errors="coerce").fillna(0)
-            weights_base = 1 + np.log1p(segment_score_num.clip(lower=0))
-            gamma_post = 0.3
-            weights_seg = weights_base * np.where(segment["type"] == "post", gamma_post, 1.0)
-            ws = (weights_seg * segment["sentiment"]).sum() / weights_seg.sum() if weights_seg.sum() > 0 else 0
-            # Normalize weighted sentiment of thread to range [-1,1]
-            ws = 2 * ws - 1
-            ts = segment["score"].sum()
-            nc = len(post_comments)
+                # Combine post and comments for calculations
+                segment = pd.concat([pd.DataFrame([post]), post_comments], ignore_index=True)
+                # Compute engagement-adjusted sentiment for this post thread
+                segment_score_num = pd.to_numeric(segment["score"], errors="coerce").fillna(0)
+                weights_base = 1 + np.log1p(segment_score_num.clip(lower=0))
+                gamma_post = 0.3
+                weights_seg = weights_base * np.where(segment["type"] == "post", gamma_post, 1.0)
+                ws = (weights_seg * segment["sentiment"]).sum() / weights_seg.sum() if weights_seg.sum() > 0 else 0
+                # Normalize weighted sentiment of thread to range [-1,1]
+                ws = 2 * ws - 1
+                ts = segment["score"].sum()
+                nc = len(post_comments)
 
-            thread_weight_sum = weights_seg.sum()
-            contrib_weight = thread_weight_sum / total_weight_day if total_weight_day > 0 else 0
-            total_contribution = contrib_weight * ws
+                thread_weight_sum = weights_seg.sum()
+                contrib_weight = thread_weight_sum / total_weight_day if total_weight_day > 0 else 0
+                total_contribution = contrib_weight * ws
 
-            analysis_rows.append({
-                "post_id": pid,
-                "Post Keywords": ", ".join(keywords_list),
-                "Weighted Sentiment of Thread": ws,
-                "Contribution Weight": contrib_weight,
-                "Total Sentiment Contribution": total_contribution,
-                "# Comments": nc,
-                "Total Score": ts
-            })
+                analysis_rows.append({
+                    "post_id": pid,
+                    "Post Keywords": ", ".join(keywords_list),
+                    "Weighted Sentiment of Thread": ws,
+                    "Contribution Weight": contrib_weight,
+                    "Total Sentiment Contribution": total_contribution,
+                    "# Comments": nc,
+                    "Total Score": ts
+                })
 
-        analysis_df = pd.DataFrame(analysis_rows)
-        # Determine top 10 posts by contribution weight
-        top10 = analysis_df.sort_values("Contribution Weight", ascending=False).head(10).copy()
-        # Reset index to 0-9 for display
-        top10.reset_index(drop=True, inplace=True)
+            analysis_df = pd.DataFrame(analysis_rows)
+            # Determine top 10 posts by contribution weight
+            top10 = analysis_df.sort_values("Contribution Weight", ascending=False).head(10).copy()
+            top10.reset_index(drop=True, inplace=True)
 
-        # Format numeric columns
-        for df_part in (top10,):
-            df_part["Weighted Sentiment of Thread"] = df_part["Weighted Sentiment of Thread"].map("{:.2f}".format)
-            df_part["Total Score"] = df_part["Total Score"].map("{:,}".format)
-            df_part["Contribution Weight"] = df_part["Contribution Weight"].map("{:.2%}".format)
-            df_part["Total Sentiment Contribution"] = df_part["Total Sentiment Contribution"].map("{:.4f}".format)
+            # Format numeric columns
+            for df_part in (top10,):
+                df_part["Weighted Sentiment of Thread"] = df_part["Weighted Sentiment of Thread"].map("{:.2f}".format)
+                df_part["Total Score"] = df_part["Total Score"].map("{:,}".format)
+                df_part["Contribution Weight"] = df_part["Contribution Weight"].map("{:.2%}".format)
+                df_part["Total Sentiment Contribution"] = df_part["Total Sentiment Contribution"].map("{:.4f}".format)
 
-        st.subheader("Top 10 Posts by Contribution Weight")
-        st.dataframe(
-            top10[["Post Keywords", "Weighted Sentiment of Thread", "Contribution Weight", "Total Sentiment Contribution", "# Comments", "Total Score"]],
-            use_container_width=True
-        )
+            st.subheader("Top 10 Posts by Contribution Weight")
+            st.dataframe(
+                top10[["Post Keywords", "Weighted Sentiment of Thread", "Contribution Weight", "Total Sentiment Contribution", "# Comments", "Total Score"]],
+                use_container_width=True
+            )
 
-        st.subheader("Post Details")
-        for idx, row in top10.reset_index(drop=True).iterrows():
-            pid = row["post_id"]
-            post_obj = posts[posts["post_id"] == pid].iloc[0]
-            post_text = post_obj["text"]
+            st.subheader("Post Details")
+            for idx, row in top10.reset_index(drop=True).iterrows():
+                pid = row["post_id"]
+                post_obj = posts[posts["post_id"] == pid].iloc[0]
+                post_text = post_obj["text"]
 
-            with st.expander(f"{idx} - {post_text.split('\\n')[0][:50]}..."):
-                # Post Metrics
-                post_sent = post_obj["sentiment"]
-                # Normalize post sentiment to [-1,1]
-                post_sent_norm = 2 * post_sent - 1
-                post_score = post_obj["score"]
-                ps = pd.to_numeric(post_score, errors="coerce")
-                post_score_num = ps if (not np.isnan(ps) and ps >= 0) else 0
-                # Compute post weight
-                post_weight = (1 + np.log1p(post_score_num)) * gamma_post
-                st.markdown("**Post:**")
-                st.markdown(f"{post_text[:300]}{'...' if len(post_text) > 300 else ''}"
-                            f"(Sentiment: {post_sent_norm:.2f}, Weight: {post_weight:.2f}, Score: {post_score:,})"
-                            )
-                st.markdown("---")
-                # Display top 5 comments with metrics
-                top_comments = (
-                    comments[comments["parent_id"] == f"t3_{pid}"]
-                    .sort_values("score", ascending=False)
-                    .head(5)
-                )
-                st.markdown("**Top Comments:**")
-                for c_idx, comment in top_comments.iterrows():
-                    c_text = comment["text"]
-                    # Normalize comment sentiment and compute weight
-                    c_sent_norm = 2 * comment["sentiment"] - 1
-                    c_score = comment["score"]
-                    cs = pd.to_numeric(c_score, errors="coerce")
-                    c_score_num = cs if (not np.isnan(cs) and cs >= 0) else 0
-                    c_weight = 1 + np.log1p(c_score_num)
-                    st.markdown(
-                        f"{c_idx}. {c_text[:200]}{'...' if len(c_text) > 200 else ''} "
-                        f"(Sentiment: {c_sent_norm:.2f}, Weight: {c_weight:.2f}, Score: {c_score:,})"
+                with st.expander(f"{idx} - {post_text.split('\\n')[0][:50]}..."):
+                    # Post Metrics
+                    post_sent = post_obj["sentiment"]
+                    # Normalize post sentiment to [-1,1]
+                    post_sent_norm = 2 * post_sent - 1
+                    post_score = post_obj["score"]
+                    ps = pd.to_numeric(post_score, errors="coerce")
+                    post_score_num = ps if (not np.isnan(ps) and ps >= 0) else 0
+                    # Compute post weight
+                    post_weight = (1 + np.log1p(post_score_num)) * gamma_post
+                    st.markdown("**Post:**")
+                    st.markdown(f"{post_text[:300]}{'...' if len(post_text) > 300 else ''}"
+                                f"(Sentiment: {post_sent_norm:.2f}, Weight: {post_weight:.2f}, Score: {post_score:,})"
+                                )
+                    st.markdown("---")
+                    # Display top 5 comments with metrics
+                    top_comments = (
+                        comments[comments["parent_id"] == f"t3_{pid}"]
+                        .sort_values("score", ascending=False)
+                        .head(5)
                     )
+                    st.markdown("**Top Comments:**")
+                    for c_idx, comment in top_comments.iterrows():
+                        c_text = comment["text"]
+                        # Normalize comment sentiment and compute weight
+                        c_sent_norm = 2 * comment["sentiment"] - 1
+                        c_score = comment["score"]
+                        cs = pd.to_numeric(c_score, errors="coerce")
+                        c_score_num = cs if (not np.isnan(cs) and cs >= 0) else 0
+                        c_weight = 1 + np.log1p(c_score_num)
+                        st.markdown(
+                            f"{c_idx}. {c_text[:200]}{'...' if len(c_text) > 200 else ''} "
+                            f"(Sentiment: {c_sent_norm:.2f}, Weight: {c_weight:.2f}, Score: {c_score:,})"
+                        )
 
 # Display the data source attribution
 st.markdown(last_update_caption, unsafe_allow_html=True)
