@@ -186,11 +186,6 @@ if submit_button:
             for _, post in posts.iterrows():
                 pid = post["post_id"]
                 text = post["text"]
-
-                # Extract keywords for the post
-                kw = keywords_for_df(pd.DataFrame({"text": [text]}), top_n=2)
-                keywords_list = [k for k, _ in kw][:2]
-
                 # Gather comments for this post
                 post_comments = comments[comments["parent_id"] == f"t3_{pid}"]
 
@@ -213,7 +208,7 @@ if submit_button:
 
                 analysis_rows.append({
                     "post_id": pid,
-                    "Post Keywords": ", ".join(keywords_list),
+                    "Post Keywords": "",  # placeholder; will compute for top posts only
                     "Weighted Sentiment of Thread": ws,
                     "Contribution Weight": contrib_weight,
                     "Total Sentiment Contribution": total_contribution,
@@ -222,25 +217,33 @@ if submit_button:
                 })
 
             analysis_df = pd.DataFrame(analysis_rows)
-            # Determine top 10 posts by contribution weight
-            top10 = analysis_df.sort_values("Contribution Weight", ascending=False).head(10).copy()
-            top10.reset_index(drop=True, inplace=True)
+            # Determine top 5 posts by contribution weight
+            top5 = analysis_df.sort_values("Contribution Weight", ascending=False).head(5).copy()
+            top5.reset_index(drop=True, inplace=True)
+
+            # Compute keywords only for top posts
+            for idx, row in top5.iterrows():
+                pid = row["post_id"]
+                post_text = posts[posts["post_id"] == pid].iloc[0]["text"]
+                kw = keywords_for_df(pd.DataFrame({"text": [post_text]}), top_n=2)
+                keywords_list = [k for k, _ in kw][:2]
+                top5.at[idx, "Post Keywords"] = ", ".join(keywords_list)
 
             # Format numeric columns
-            for df_part in (top10,):
+            for df_part in (top5,):
                 df_part["Weighted Sentiment of Thread"] = df_part["Weighted Sentiment of Thread"].map("{:.2f}".format)
                 df_part["Total Score"] = df_part["Total Score"].map("{:,}".format)
                 df_part["Contribution Weight"] = df_part["Contribution Weight"].map("{:.2%}".format)
                 df_part["Total Sentiment Contribution"] = df_part["Total Sentiment Contribution"].map("{:.4f}".format)
 
-            st.subheader("Top 10 Posts by Contribution Weight")
+            st.subheader("Top 5 Posts by Contribution Weight")
             st.dataframe(
-                top10[["Post Keywords", "Weighted Sentiment of Thread", "Contribution Weight", "Total Sentiment Contribution", "# Comments", "Total Score"]],
+                top5[["Post Keywords", "Weighted Sentiment of Thread", "Contribution Weight", "Total Sentiment Contribution", "# Comments", "Total Score"]],
                 use_container_width=True
             )
 
             st.subheader("Post Details")
-            for idx, row in top10.reset_index(drop=True).iterrows():
+            for idx, row in top5.reset_index(drop=True).iterrows():
                 pid = row["post_id"]
                 post_obj = posts[posts["post_id"] == pid].iloc[0]
                 post_text = post_obj["text"]
