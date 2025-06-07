@@ -49,11 +49,17 @@ selected_subs = st.multiselect(
 )
 plot_df = filtered_df[filtered_df["subreddit"].isin(selected_subs)]
 
-# Create a selection for tooltip highlighting
-nearest = alt.selection_point(nearest=True, on="mouseover", fields=["date"], empty=False)
+# Define hover selection for nearest point
+nearest = alt.selection_single(
+    name="nearest",
+    on="mouseover",
+    nearest=True,
+    fields=["date"],
+    empty="none"
+)
 
-# Updated line chart with vertical legend at top
-line_chart = alt.Chart(plot_df).mark_line().encode(
+# Base chart for DRY encoding
+base = alt.Chart(plot_df).encode(
     x=alt.X("date:T", title="Date", axis=alt.Axis(format=time_format)),
     y=alt.Y("community_weighted_sentiment:Q", title="Community Weighted Sentiment"),
     color=alt.Color(
@@ -65,26 +71,35 @@ line_chart = alt.Chart(plot_df).mark_line().encode(
             direction="vertical",
             columns=1
         )
-    ),
-    opacity=alt.value(1),
-    tooltip=["date", "subreddit", "community_weighted_sentiment"]
-).properties(height=300).add_selection(nearest)
+    )
+)
 
-# Add points for interactive tooltip
-points = alt.Chart(plot_df).mark_point().encode(
-    x="date:T",
-    y="community_weighted_sentiment:Q",
+# Draw lines
+line = base.mark_line()
+
+# Invisible selectors to capture hover events
+selectors = base.mark_point(opacity=0).add_selection(nearest)
+
+# Draw highlighted points on hover
+points_hover = base.mark_point(size=60).encode(
     opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-).add_selection(nearest).transform_filter(nearest)
+)
 
-# Create tooltip rule
-tooltip_rule = alt.Chart(plot_df).mark_rule(color="gray").encode(
-    x="date:T"
+# Tooltip rule and popup
+tooltips = base.mark_rule(color="gray").encode(
+    tooltip=[
+        alt.Tooltip("subreddit:N", title="Subreddit"),
+        alt.Tooltip("date:T", title="Date", format=time_format),
+        alt.Tooltip("community_weighted_sentiment:Q", title="Sentiment", format=".2f")
+    ]
 ).transform_filter(nearest)
 
-# Combine charts
-combined_chart = (line_chart + points + tooltip_rule).interactive()
-st.altair_chart(combined_chart, use_container_width=True)
+# Layer everything and make interactive
+hover_chart = alt.layer(line, selectors, points_hover, tooltips).properties(
+    height=300
+).interactive()
+
+st.altair_chart(hover_chart, use_container_width=True)
 
 # ── Bar chart for post counts by subreddit (side-by-side) ────────────────────
 st.subheader("Daily Post Counts by Subreddit")
