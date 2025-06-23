@@ -289,4 +289,4 @@ if submit_button:
                         )
 
 # Display the data source attribution
-st.markdown(last_update_caption, unsafe_allow_html=True)
+# st.markdown(last_update_caption, unsafe_allow_html=True)
