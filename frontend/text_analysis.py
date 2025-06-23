@@ -3,6 +3,7 @@ Text analysis utilities for Reddit content insights.
 Provides keyword extraction and similarity matching functions.
 """
 import pandas as pd
+import contextlib
 
 # NOTE:
 # Heavy NLP/ML libraries (spaCy, sentence-transformers, KeyBERT, torch, etc.) can take a
@@ -36,38 +37,49 @@ def _load_models():
 
     import importlib
 
-    # Import spaCy and ensure the small English model is available
-    spacy = importlib.import_module("spacy")
+    # ------------------------------------------------------------------
+    # Inform the user via Streamlit (if available) that heavy models are
+    # loading.  We use a spinner that is shown only on the first call; the
+    # function is cached so subsequent calls skip the spinner entirely.
+    # ------------------------------------------------------------------
+
     try:
-        nlp = spacy.load("en_core_web_sm")
-    except OSError:
-        # Streamlit is only available after `st.set_page_config` is called, which the
-        # main app does before importing this module.  We therefore import it lazily
-        # here to avoid a hard dependency when the module is imported outside a
-        # Streamlit context (e.g. unit tests).
+        import streamlit as st  # noqa: WPS433 (late import)
+
+        spinner_cm = st.spinner(
+            "Initializing keyword-extraction models (first run may take ~1 min)…",
+        )
+    except ModuleNotFoundError:
+        # If Streamlit isn't present (e.g. unit tests) simply do nothing.
+        spinner_cm = contextlib.nullcontext()
+
+    with spinner_cm:
+        # Import spaCy and ensure the small English model is available
+        spacy = importlib.import_module("spacy")
+
         try:
-            import streamlit as st  # noqa: WPS433 (allow late import)
-
-            with st.spinner("Downloading spaCy model (first run only)..."):
-                from spacy.cli import download  # noqa: WPS433 (late import)
-
-                download("en_core_web_sm")
-                nlp = spacy.load("en_core_web_sm")
-        except ModuleNotFoundError:
-            # If Streamlit isn't available, fall back to downloading silently.
+            nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            # Model is not yet downloaded; download silently (inside the main spinner)
             from spacy.cli import download  # noqa: WPS433 (late import)
 
             download("en_core_web_sm")
             nlp = spacy.load("en_core_web_sm")
 
-    # Sentence-Transformers and KeyBERT (which depends on it)
-    sent_trans = importlib.import_module("sentence_transformers")
-    SentenceTransformer = sent_trans.SentenceTransformer
+        # Sentence-Transformers and KeyBERT (which depends on it)
+        sent_trans = importlib.import_module("sentence_transformers")
+        SentenceTransformer = sent_trans.SentenceTransformer
 
-    KeyBERT = importlib.import_module("keybert").KeyBERT
+        KeyBERT = importlib.import_module("keybert").KeyBERT
 
-    embedder = SentenceTransformer("all-MiniLM-L6-v2")
-    kw_model = KeyBERT(embedder)
+        embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        kw_model = KeyBERT(embedder)
+
+    # Notify user that models are ready (only on first load)
+    try:
+        st.success("Keyword-extraction models ready!", icon="✅")  # type: ignore[name-defined]
+    except Exception:  # noqa: BLE001 (streamlit not available or other minor issue)
+        pass
 
     return nlp, kw_model
 
