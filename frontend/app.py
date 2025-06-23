@@ -247,8 +247,8 @@ if submit_button:
                 pid = row["post_id"]
                 post_obj = posts[posts["post_id"] == pid].iloc[0]
                 post_text = post_obj["text"]
-
-                with st.expander(f"{idx} - {post_text.split('\\n')[0][:50]}..."):
+                first_line = post_text.split("\n")[0][:50] 
+                with st.expander(f"{idx} - {first_line}..."):
                     # Post Metrics
                     post_sent = post_obj["sentiment"]
                     # Normalize post sentiment to [-1,1]
