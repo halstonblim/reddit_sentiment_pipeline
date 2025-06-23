@@ -5,7 +5,10 @@ import numpy as np
 import altair as alt
 from datetime import date, timedelta, datetime
 
-# Import from local modules
+# Call page config BEFORE importing modules that use Streamlit commands
+st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
+
+# Import from local modules AFTER page config is set
 from data_utils import (
     load_summary,
     load_day,
@@ -14,7 +17,6 @@ from data_utils import (
 )
 from text_analysis import keywords_for_df
 
-st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
 st.title("Reddit Sentiment Monitor")
 
 
