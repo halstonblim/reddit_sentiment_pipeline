@@ -1,0 +1,29 @@
+# Hugging Face repository configuration
+repo_id: hblim/top_reddit_posts_daily
+repo_type: dataset 
+
+# Inference configuration
+replicate_model: halstonblim/distilbert-base-uncased-finetuned-sst-2-english:d1a897bcd8ebb23c5aab87317eee2d6c919cdc5cfbf9154140c5c2fb47344b8c
+scored_dir: reddit_analysis/data/data_scored
+hf_scored_dir: data_scored_subreddit
+batch_size: 1024
+
+# Scraper configuration
+timezone: US/Central
+raw_dir: reddit_analysis/data/data_raw
+logs_dir: reddit_analysis/data/logs
+hf_raw_dir: data_raw
+push_to_hf: true
+subreddits:
+  - name: artificial
+    post_limit: 100
+    comment_limit: 10
+  - name: LocalLLaMA
+    post_limit: 100
+    comment_limit: 10
+  - name: singularity
+    post_limit: 100
+    comment_limit: 10
+  - name: OpenAI
+    post_limit: 100
+    comment_limit: 10

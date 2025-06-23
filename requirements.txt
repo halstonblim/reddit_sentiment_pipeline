@@ -1,0 +1,22 @@
+# Core dependencies
+streamlit==1.44.1
+pandas==2.2.3
+numpy==2.2.4
+altair==5.5.0
+
+# Data handling
+huggingface-hub==0.30.2
+pyyaml==6.0.2
+
+# Text analysis
+spacy==3.8.5
+scikit-learn==1.6.1
+sentence-transformers==4.1.0
+keybert==0.9.0
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+
+# Local development
+python-dotenv==1.1.0
+
+# Added for parquet reading on Spaces
+pyarrow==16.1.0
