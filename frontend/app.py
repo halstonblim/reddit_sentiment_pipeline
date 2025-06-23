@@ -1,9 +1,7 @@
-import os
 import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
-from datetime import date, timedelta, datetime
 
 # Call page config BEFORE importing modules that use Streamlit commands
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
