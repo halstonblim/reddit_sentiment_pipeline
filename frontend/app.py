@@ -6,13 +6,13 @@ import altair as alt
 from datetime import date, timedelta, datetime
 
 # Import from local modules
-from .data_utils import (
+from data_utils import (
     load_summary,
     load_day,
     get_subreddit_colors,
     get_last_updated_hf_caption,
 )
-from .text_analysis import keywords_for_df
+from text_analysis import keywords_for_df
 
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
 st.title("Reddit Sentiment Monitor")

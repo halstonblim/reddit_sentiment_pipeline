@@ -5,7 +5,7 @@ colorFrom: "indigo"
 colorTo: "red"
 sdk: "streamlit"
 sdk_version: "1.44.1"
-app_file: "app.py"
+app_file: "frontend/app.py"
 pinned: false
 ---
 
