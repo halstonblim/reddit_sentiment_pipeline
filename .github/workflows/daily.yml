@@ -1,5 +1,4 @@
-# .github/workflows/daily.yml
-name: Daily ETL & CI
+name: Daily ETL
 
 on:
   workflow_dispatch:
@@ -8,14 +7,9 @@ on:
 
 jobs:
   build:
-    # This is the GitHub‑hosted runner's OS.
-    # You can change to macos-latest if you really need a macOS VM,
-    # but ubuntu-latest is faster and usually all you need.
     runs-on: ubuntu-latest
 
     env:
-      # These come from your repository settings → Secrets → Actions.
-      # Add HF_TOKEN, REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, REDDIT_USER_AGENT there.
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
       REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
