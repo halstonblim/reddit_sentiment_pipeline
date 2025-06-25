@@ -15,7 +15,20 @@ from data_utils import (
 )
 from text_analysis import keywords_for_df
 
+
 st.title("Reddit Sentiment Monitor")
+
+st.markdown(
+    """
+    **Welcome!** This page shows how Reddit's AI communities feel day-to-day.
+
+    • A daily pipeline grabs new posts and comments, scores their tone with a sentiment model, and saves the totals to a public HuggingFace [dataset](https://huggingface.co/datasets/hblim/top_reddit_posts_daily). \n
+    • The line chart below plots *community-weighted sentiment*: each post/comment's sentiment is scaled by its upvotes so busier discussions matter more. Values run from −1 (negative) to +1 (positive). \n
+    • The table further down lets you drill into the posts that shaped the mood on a chosen date. \n\n
+
+    Pick a subreddit and explore!
+    """
+)
 
 
 # ── Load & transform data ────────────────────────────────────────────────────
@@ -46,13 +59,14 @@ date_range = st.date_input(
 start_date, end_date = date_range
 filtered_df = df[(df["date"].dt.date >= start_date) & (df["date"].dt.date <= end_date)]
 
-# Add a multiselect widget for choosing which subreddits to display
-selected_subs = st.multiselect(
-    "Select subreddits to display",
+# Add a dropdown (selectbox) for choosing a single subreddit to display
+default_sub = "artificial" if "artificial" in subreddits else list(subreddits)[0]
+selected_subreddit = st.selectbox(
+    "Select subreddit",
     options=list(subreddits),
-    default=list(subreddits)
+    index=list(subreddits).index(default_sub)
 )
-plot_df = filtered_df[filtered_df["subreddit"].isin(selected_subs)]
+plot_df = filtered_df[filtered_df["subreddit"] == selected_subreddit]
 
 # Define hover selection for nearest point
 nearest = alt.selection_single(
@@ -63,30 +77,23 @@ nearest = alt.selection_single(
     empty="none"
 )
 
-# Base chart for DRY encoding
+# Base chart for DRY encoding (single subreddit, constant colour)
 base = alt.Chart(plot_df).encode(
     x=alt.X("date:T", title="Date", axis=alt.Axis(format=time_format)),
-    y=alt.Y("community_weighted_sentiment:Q", title="Community Weighted Sentiment"),
-    color=alt.Color(
-        "subreddit:N",
-        scale=alt.Scale(domain=list(subreddits), range=list(subreddit_colors.values())),
-        legend=alt.Legend(
-            title="Subreddit",
-            orient="top",
-            direction="vertical",
-            columns=1
-        )
-    )
+    y=alt.Y("community_weighted_sentiment:Q", title="Community Weighted Sentiment")
 )
 
-# Draw lines
-line = base.mark_line()
+# Determine colour for the chosen subreddit
+line_colour = subreddit_colors.get(selected_subreddit, "#1f77b4")
+
+# Draw line for the selected subreddit
+line = base.mark_line(color=line_colour)
 
 # Invisible selectors to capture hover events
 selectors = base.mark_point(opacity=0).add_selection(nearest)
 
 # Draw highlighted points on hover
-points_hover = base.mark_point(size=60).encode(
+points_hover = base.mark_point(size=60, color=line_colour).encode(
     opacity=alt.condition(nearest, alt.value(1), alt.value(0))
 )
 
@@ -99,9 +106,13 @@ tooltips = base.mark_rule(color="gray").encode(
     ]
 ).transform_filter(nearest)
 
-# Layer everything and make interactive
+# Layer everything and make interactive, with title showing subreddit
 hover_chart = alt.layer(line, selectors, points_hover, tooltips).properties(
-    height=300
+    height=300,
+    title=alt.TitleParams(
+        text=f"Daily Community Weighted Sentiment for {selected_subreddit}",
+        offset=20  # adds space above the title so it is not cut off
+    )
 ).interactive()
 
 st.altair_chart(hover_chart, use_container_width=True)
