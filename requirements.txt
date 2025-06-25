@@ -10,6 +10,7 @@ pyyaml
 
 # Text analysis
 spacy
+en-core-web-sm==3.8.0
 scikit-learn
 sentence-transformers
 keybert

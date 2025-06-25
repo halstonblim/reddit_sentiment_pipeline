@@ -59,12 +59,17 @@ def _load_models():
 
         try:
             nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            # Model is not yet downloaded; download silently (inside the main spinner)
-            from spacy.cli import download  # noqa: WPS433 (late import)
-
-            download("en_core_web_sm")
-            nlp = spacy.load("en_core_web_sm")
+        except OSError as exc:
+            # The model is missing.  Do NOT attempt to install it at run-time
+            # because the app may run under a non-privileged user (e.g. Streamlit
+            # Cloud) and lack write permissions to the virtual-env.  Instead we
+            # instruct the developer to add the model wheel to build-time
+            # dependencies so it gets installed by pip when the image is built.
+            raise RuntimeError(
+                "spaCy model 'en_core_web_sm' is not installed. "
+                "Add 'en-core-web-sm==3.8.0' (hyphen, not underscore) to "
+                "your requirements.txt so it is installed during deployment."
+            ) from exc
 
         # Sentence-Transformers and KeyBERT (which depends on it)
         sent_trans = importlib.import_module("sentence_transformers")
