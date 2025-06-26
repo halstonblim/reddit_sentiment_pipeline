@@ -234,6 +234,9 @@ legend_df = pd.DataFrame({
     "shape": ["circle", "square"],
 })
 
+# Retrieve the current theme's text color so legend text adapts to light/dark mode
+text_color = st.get_option("theme.textColor") or "#000000"
+
 legend_points = (
     alt.Chart(legend_df)
     .mark_point(size=100, filled=True)
@@ -248,7 +251,7 @@ legend_points = (
 
 legend_text = (
     alt.Chart(legend_df)
-    .mark_text(align="left", baseline="middle", dx=15)
+    .mark_text(align="left", baseline="middle", dx=15, color=text_color)
     .encode(
         y="row:O",
         x=alt.value(0),
