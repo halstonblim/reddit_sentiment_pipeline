@@ -234,9 +234,6 @@ legend_df = pd.DataFrame({
     "shape": ["circle", "square"],
 })
 
-# Retrieve the current theme's text color so legend text adapts to light/dark mode
-text_color = st.get_option("theme.textColor") or "#000000"
-
 legend_points = (
     alt.Chart(legend_df)
     .mark_point(size=100, filled=True)
@@ -251,7 +248,7 @@ legend_points = (
 
 legend_text = (
     alt.Chart(legend_df)
-    .mark_text(align="left", baseline="middle", dx=15, color=text_color)
+    .mark_text(align="left", baseline="middle", dx=15, color="black")
     .encode(
         y="row:O",
         x=alt.value(0),
@@ -261,16 +258,17 @@ legend_text = (
 
 manual_legend = (
     legend_points + legend_text
-).properties(height=60)
+).properties(height=50, background="white",width=170)
 
-# Concatenate chart and manual legend vertically
-final_chart = alt.vconcat(
-    manual_legend,    
-    hover_chart,
-    spacing=0
-).configure_view(strokeWidth=0)
+# # Concatenate chart and manual legend vertically
+# final_chart = alt.vconcat(
+#     manual_legend,    
+#     hover_chart,
+#     spacing=0
+# ).configure_view(strokeWidth=0)
 
-st.altair_chart(final_chart, use_container_width=True)
+st.altair_chart(manual_legend, use_container_width=False)
+st.altair_chart(hover_chart, use_container_width=True)
 
 # ── Bar chart for post counts by subreddit (side-by-side) ────────────────────
 st.subheader("Daily Post Counts by Subreddit")
