@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import yaml
+from pathlib import Path
 
 # Call page config BEFORE importing modules that use Streamlit commands
 st.set_page_config(page_title="Reddit Sentiment Trends", layout="wide")
@@ -22,11 +24,8 @@ st.markdown(
     """
     **Welcome!** This page shows how Reddit's AI communities feel day-to-day.
 
-    • A daily pipeline grabs new posts and comments, scores their tone with a sentiment model, and saves the totals to a public HuggingFace [dataset](https://huggingface.co/datasets/hblim/top_reddit_posts_daily). \n
-    • The line chart below plots *community-weighted sentiment*: each post/comment's sentiment is scaled by its upvotes so busier discussions matter more. Values run from −1 (negative) to +1 (positive). \n
-    • The table further down lets you drill into the posts that shaped the mood on a chosen date. \n\n
+    A daily pipeline grabs new posts and comments, scores their tone with a sentiment model, and saves the results to a public HuggingFace [dataset](https://huggingface.co/datasets/hblim/top_reddit_posts_daily). \n
 
-    Pick a subreddit and explore!
     """
 )
 
@@ -39,6 +38,14 @@ last_update_caption = get_last_updated_hf_caption()
 subreddits = df["subreddit"].unique()
 subreddit_colors = get_subreddit_colors(subreddits)
 
+# Load mean/std parameters for sentiment spike bands per subreddit
+params_path = Path(__file__).resolve().parent.parent / "spike_params.yaml"
+try:
+    with params_path.open("r") as f:
+        spike_params = yaml.safe_load(f)
+except FileNotFoundError:
+    spike_params = {}
+
 # Define time format to use across all charts
 time_format = "%m/%d/%Y"
 
@@ -47,8 +54,16 @@ min_date = df["date"].min().date()
 max_date = df["date"].max().date()
 
 # ── Community weighted sentiment line chart for all subreddits ───────────────
-st.subheader("Community Weighted Sentiment by Subreddit")
-
+st.subheader("Daily Community-Weighted Sentiment")
+st.markdown(
+    """
+    The line chart below plots the daily *community-weighted sentiment*, reflecting the average sentiment across all posts/comments in a subreddit community.
+    
+    To calculate the community-weighted sentiment:
+    - First, each post or comment is assigned a sentiment score of −1 (negative) or +1 (positive) 
+    - Then, the sentiment score is weighted by its upvotes so busier discussions matter more. 
+    """
+)
 # Add date range selector for the time series
 date_range = st.date_input(
     "Select date range for time series",
@@ -68,6 +83,33 @@ selected_subreddit = st.selectbox(
 )
 plot_df = filtered_df[filtered_df["subreddit"] == selected_subreddit]
 
+# ── Determine shading band and dynamic y-axis domain ────────────────────────
+mean_val = std_val = None
+if selected_subreddit in spike_params:
+    mean_val = spike_params[selected_subreddit].get("mean")
+    std_val = spike_params[selected_subreddit].get("std")
+
+# Calculate band limits if parameters exist
+band_low = band_high = None
+if mean_val is not None and std_val is not None:
+    band_low = mean_val - 3 * std_val
+    band_high = mean_val + 3 * std_val
+
+# Determine y-axis domain based on data and (optional) band
+sent_min = plot_df["community_weighted_sentiment"].min()
+sent_max = plot_df["community_weighted_sentiment"].max()
+
+if band_low is not None:
+    y_min = float(min(sent_min, band_low))
+    y_max = float(max(sent_max, band_high))
+else:
+    y_min = float(sent_min)
+    y_max = float(sent_max)
+
+# Add small padding so points are not flush with edges
+padding = 0.05
+y_domain = [y_min - padding, y_max + padding]
+
 # Define hover selection for nearest point
 nearest = alt.selection_single(
     name="nearest",
@@ -77,17 +119,30 @@ nearest = alt.selection_single(
     empty="none"
 )
 
-# Base chart for DRY encoding (single subreddit, constant colour)
+# Base chart with refreshed y-axis range
 base = alt.Chart(plot_df).encode(
-    x=alt.X("date:T", title="Date", axis=alt.Axis(format=time_format)),
-    y=alt.Y("community_weighted_sentiment:Q", title="Community Weighted Sentiment")
+    x=alt.X("date:T", title="Date", axis=alt.Axis(format=time_format, labelPadding=15)),
+    y=alt.Y(
+        "community_weighted_sentiment:Q",
+        title="Community Weighted Sentiment",
+        scale=alt.Scale(domain=y_domain),
+    ),
 )
-
-# Determine colour for the chosen subreddit
-line_colour = subreddit_colors.get(selected_subreddit, "#1f77b4")
+# Use a constant blue colour for all plot elements
+line_colour = "#1f77b4"
 
 # Draw line for the selected subreddit
-line = base.mark_line(color=line_colour)
+line = (
+    base.transform_calculate(legend='"daily community sentiment score"')
+    .mark_line(color=line_colour)
+    .encode(
+        color=alt.Color(
+            "legend:N",
+            scale=alt.Scale(domain=["daily community sentiment score", "historical 3σ sentiment range", "significant sentiment outlier"], range=[line_colour, line_colour, "red"]),
+            legend=None  # hide default legend; we will add a custom manual legend below the chart
+        )
+    )
+)
 
 # Invisible selectors to capture hover events
 selectors = base.mark_point(opacity=0).add_selection(nearest)
@@ -106,16 +161,113 @@ tooltips = base.mark_rule(color="gray").encode(
     ]
 ).transform_filter(nearest)
 
-# Layer everything and make interactive, with title showing subreddit
-hover_chart = alt.layer(line, selectors, points_hover, tooltips).properties(
-    height=300,
-    title=alt.TitleParams(
-        text=f"Daily Community Weighted Sentiment for {selected_subreddit}",
-        offset=20  # adds space above the title so it is not cut off
-    )
-).interactive()
+# Optional shaded band (mean ± 3σ)
+band = None
+outliers = None
+domain_labels = [
+    "daily community sentiment score",
+    "historical 3σ sentiment range",
+    "significant sentiment outlier",
+]
+domain_colors = [line_colour, line_colour, "red"]
 
-st.altair_chart(hover_chart, use_container_width=True)
+
+
+if band_low is not None:
+    band_df = pd.DataFrame({
+        "date": [plot_df["date"].min(), plot_df["date"].max()],
+        "low": [band_low, band_low],
+        "high": [band_high, band_high],
+    })
+    band = (
+        alt.Chart(band_df)
+        .transform_calculate(legend='"historical 3σ sentiment range"')
+        .mark_area(opacity=0.15)
+        .encode(
+            x="date:T",
+            y=alt.Y("low:Q", scale=alt.Scale(domain=y_domain)),
+            y2="high:Q",
+            color=alt.Color(
+                "legend:N",
+                scale=alt.Scale(domain=domain_labels, range=domain_colors),
+                legend=None  # suppress built-in legend for band
+            ),
+        )
+    )
+
+    # Identify significant outliers outside the band
+    outlier_df = plot_df[(plot_df["community_weighted_sentiment"] < band_low) |
+                         (plot_df["community_weighted_sentiment"] > band_high)].copy()
+    if not outlier_df.empty:
+        outliers = (
+            alt.Chart(outlier_df)
+            .transform_calculate(legend='"significant sentiment outlier"')
+            .mark_point(shape="circle", size=100, fill="white", stroke="red", strokeWidth=2)
+            .encode(
+                x="date:T",
+                y="community_weighted_sentiment:Q",
+                color=alt.Color(
+                    "legend:N",
+                    scale=alt.Scale(domain=domain_labels, range=domain_colors),
+                    legend=None  # suppress built-in legend for outlier
+                ),
+            )
+        )
+
+# Layer everything and make interactive, with title showing subreddit
+layers = [line, selectors, points_hover, tooltips]
+if band is not None:
+    layers.insert(0, band)  # draw band behind the line
+if outliers is not None:
+    layers.append(outliers)
+
+hover_chart = alt.layer(*layers).properties(
+    height=400,  # increased height for more spacious plot area
+).interactive(bind_y=False)
+
+# ── Manual legend (two rows) ───────────────────────────────────────────────
+legend_df = pd.DataFrame({
+    "row": [0, 1],
+    "label": ["significant sentiment outlier", "historical 3σ sentiment range"],
+    "stroke": ["red", "lightblue"],  # outline colour
+    "fill": ["white", "lightblue"],  # interior fill (blue only for historical band)
+    "shape": ["circle", "square"],
+})
+
+legend_points = (
+    alt.Chart(legend_df)
+    .mark_point(size=100, filled=True)
+    .encode(
+        y=alt.Y("row:O", axis=None),
+        x=alt.value(0),
+        shape=alt.Shape("shape:N", legend=None),
+        stroke=alt.Stroke("stroke:N", scale=None, legend=None),
+        fill=alt.Fill("fill:N", scale=None, legend=None),
+    )
+)
+
+legend_text = (
+    alt.Chart(legend_df)
+    .mark_text(align="left", baseline="middle", dx=15)
+    .encode(
+        y="row:O",
+        x=alt.value(0),
+        text="label:N",
+    )
+)
+
+manual_legend = (
+    legend_points + legend_text
+).properties(height=60)
+
+# Concatenate chart and manual legend vertically
+final_chart = alt.vconcat(
+    manual_legend,    
+    hover_chart,
+    spacing=0
+).configure_view(strokeWidth=0)
+
+st.altair_chart(final_chart, use_container_width=True)
 
 # ── Bar chart for post counts by subreddit (side-by-side) ────────────────────
 st.subheader("Daily Post Counts by Subreddit")
@@ -131,7 +283,7 @@ bar_chart = alt.Chart(df).mark_bar().encode(
         legend=alt.Legend(title="Subreddit")
     ),
     tooltip=["date", "subreddit", "count"]
-).properties(height=300).interactive()
+).properties(height=400).interactive()
 
 st.altair_chart(bar_chart, use_container_width=True)
 

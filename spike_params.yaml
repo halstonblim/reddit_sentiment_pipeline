@@ -1,0 +1,13 @@
+# spike_params.yaml
+LocalLLaMA:
+  mean: -0.4854
+  std: 0.0696
+OpenAI:
+  mean: -0.4937
+  std: 0.0714
+artificial:
+  mean: -0.4735
+  std: 0.1389
+singularity:
+  mean: -0.4299
+  std: 0.0811
