@@ -13,6 +13,7 @@ pinned: false
 
 [![CI Status](https://github.com/halstonblim/reddit_sentiment_pipeline/actions/workflows/daily.yml/badge.svg)](https://github.com/halstonblim/reddit_sentiment_pipeline/actions/workflows/daily.yml)
 [![Streamlit App](https://img.shields.io/badge/demo-streamlit-ff4b4b?logo=streamlit)](https://redditsentimentpipeline.streamlit.app/)
+[![Hugging Face Space](https://img.shields.io/badge/Hugging%20Face–Space-orange?logo=huggingface&style=flat-square)](https://huggingface.co/spaces/hblim/reddit_sentiment_tracker)
 
 A fully‑automated **end‑to‑end MLOps** pipeline that tracks daily sentiment trends on Reddit, scores posts with a transformer‑based model served from Replicate, summarizes the results, and publishes an interactive Streamlit dashboard—all orchestrated by GitHub Actions.
 
